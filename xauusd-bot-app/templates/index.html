@@ -2,197 +2,521 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>XAUUSD Bias Bot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08090b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="XAUUSD Bias">
+<title>XAUUSD Daily Bias</title>
 <style>
   :root {
-    --bg: #0b0d12;
-    --panel: #14171f;
-    --border: #262b36;
-    --text: #e7e9ee;
-    --muted: #8b93a3;
-    --buy: #2fbf71;
-    --sell: #e5484d;
-    --none: #d7a52c;
-    --accent: #5b8cff;
+    --ink: #08090b;
+    --panel: #131418;
+    --panel-raised: #1a1b21;
+    --hairline: #2a2b33;
+    --paper: #eceef2;
+    --ink-2: #7c7e8c;
+    --gold: #cda149;
+    --buy: #35c78a;
+    --buy-dim: rgba(53, 199, 138, 0.14);
+    --sell: #e5566a;
+    --sell-dim: rgba(229, 86, 106, 0.14);
+    --none: #6f8fae;
+    --none-dim: rgba(111, 143, 174, 0.14);
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
   }
-  * { box-sizing: border-box; }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    max-width: 640px;
-    margin: 48px auto;
-    padding: 0 20px;
+    margin: 0;
+    font-family: var(--font-display);
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    overflow-x: hidden;
   }
-  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
 
-  button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 8px;
+  .app-shell {
+    width: 100%;
+    max-width: 460px;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    background:
+      radial-gradient(120% 60% at 50% 0%, rgba(205,161,73,0.10) 0%, rgba(205,161,73,0) 60%),
+      var(--ink);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 24px 14px;
+    flex-shrink: 0;
+  }
+
+  .mark { width: 26px; height: 26px; flex-shrink: 0; }
+
+  .wordmark { display: flex; flex-direction: column; line-height: 1.15; }
+
+  .wordmark .ticker {
     font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--paper);
   }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button:hover:not(:disabled) { filter: brightness(1.1); }
 
-  .status-line {
-    margin-top: 16px;
-    font-size: 13px;
-    color: var(--muted);
+  .wordmark .sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .screens {
+    position: relative;
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 24px 32px;
+    transition: transform 0.46s cubic-bezier(.22,.9,.32,1), opacity 0.4s ease;
+  }
+
+  .screen--idle { justify-content: center; transform: translateX(0); opacity: 1; }
+  .screen--idle.leaving { transform: translateX(-22%); opacity: 0; }
+
+  .screen--result {
+    justify-content: flex-start;
+    padding-top: 6vh;
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .screen--result.entered { transform: translateX(0); opacity: 1; pointer-events: auto; }
+
+  /* ---- Idle screen ---- */
+
+  .gauge-wrap {
+    position: relative;
+    width: 216px;
+    height: 216px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .gauge-ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .gauge-ring circle { fill: none; stroke-width: 1.5; }
+  .gauge-ring .track { stroke: var(--hairline); }
+
+  .gauge-ring .sweep {
+    stroke: var(--gold);
+    stroke-linecap: round;
+    stroke-dasharray: 40 616;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .gauge-wrap.pending .gauge-ring .sweep {
+    opacity: 1;
+    animation: sweep-rotate 1.35s linear infinite;
+  }
+
+  @keyframes sweep-rotate { to { transform: rotate(270deg); } }
+
+  .gauge-btn {
+    width: 168px;
+    height: 168px;
+    border-radius: 50%;
+    border: 1px solid var(--hairline);
+    background: linear-gradient(160deg, var(--panel-raised), var(--panel) 70%);
+    color: var(--paper);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s ease, border-color 0.3s ease;
+  }
+
+  .gauge-btn:active { transform: scale(0.96); }
+  .gauge-btn:not(:disabled):hover { border-color: rgba(205, 161, 73, 0.5); }
+  .gauge-btn:disabled { cursor: default; }
+
+  .gauge-icon { width: 30px; height: 30px; color: var(--gold); }
+  .gauge-label { font-size: 15px; font-weight: 650; letter-spacing: 0.02em; }
+
+  .gauge-sub {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .idle-hint {
+    margin: 28px 0 0;
+    font-size: 13.5px;
+    color: var(--ink-2);
+    text-align: center;
+    max-width: 260px;
+    line-height: 1.5;
+  }
+
+  .status-row {
+    margin-top: 18px;
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
   }
-  .spinner {
-    width: 12px; height: 12px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
+
+  .status-row.error { color: var(--sell); }
+
+  .status-row .dot {
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    display: none;
+    background: var(--gold);
+    animation: pulse-dot 1.4s ease-in-out infinite;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
 
-  .card {
-    margin-top: 24px;
+  .status-row.error .dot { background: var(--sell); animation: none; }
+
+  @keyframes pulse-dot { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+  /* ---- Result screen (trade ticket) ---- */
+
+  .ticket {
+    width: 100%;
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-    display: none;
+    border: 1px solid var(--hairline);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -24px rgba(0,0,0,0.6);
   }
-  .bias-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 0.5px;
-    margin-bottom: 12px;
-  }
-  .bias-badge.buy { background: rgba(47,191,113,0.15); color: var(--buy); }
-  .bias-badge.sell { background: rgba(229,72,77,0.15); color: var(--sell); }
-  .bias-badge.none { background: rgba(215,165,44,0.15); color: var(--none); }
 
-  .card pre {
-    white-space: pre-wrap;
-    font-family: inherit;
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--text);
-    margin: 0;
+  .ticket-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 22px 20px;
   }
-  .session-link {
-    display: inline-block;
-    margin-top: 16px;
+
+  .bias-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  .bias-pill::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .bias-pill.buy { background: var(--buy-dim); color: var(--buy); }
+  .bias-pill.sell { background: var(--sell-dim); color: var(--sell); }
+  .bias-pill.none { background: var(--none-dim); color: var(--none); }
+
+  .ticket-time {
+    font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--accent);
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .perforation {
+    position: relative;
+    height: 1px;
+    background: repeating-linear-gradient(to right, var(--hairline) 0 6px, transparent 6px 12px);
+    margin: 0 0 2px;
+  }
+
+  .perforation::before, .perforation::after {
+    content: "";
+    position: absolute;
+    top: -9px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 1px solid var(--hairline);
+  }
+
+  .perforation::before { left: -10px; }
+  .perforation::after { right: -10px; }
+
+  .ticket-body {
+    margin: 0;
+    padding: 22px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--paper);
+    white-space: pre-wrap;
+  }
+
+  .session-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 18px 2px 0;
+    padding: 15px 16px;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    color: var(--paper);
     text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 550;
+    background: var(--panel);
+    transition: transform 0.15s ease, border-color 0.2s ease;
+  }
+
+  .session-row[hidden] { display: none; }
+  .session-row:active { transform: scale(0.98); }
+  .session-row:hover { border-color: rgba(205,161,73,0.4); }
+  .session-row .chev { color: var(--gold); font-family: var(--font-mono); }
+
+  .again-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 15px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s ease, transform 0.15s ease;
+  }
+
+  .again-btn:active { transform: scale(0.98); }
+  .again-btn:hover { color: var(--paper); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .screen, .gauge-btn, .session-row, .again-btn { transition: none !important; }
+    .gauge-ring .sweep, .status-row .dot { animation: none !important; }
   }
 </style>
 </head>
 <body>
 
-  <h1>XAUUSD Daily Bias</h1>
-  <div class="sub">Fires the Claude Code routine and pulls the result straight from Calendar.</div>
-
-  <button id="startBtn">Start Bot</button>
-
-  <div class="status-line" id="statusLine" style="display:none;">
-    <div class="spinner" id="spinner"></div>
-    <span id="statusText"></span>
+<div class="app-shell">
+  <div class="topbar">
+    <svg class="mark" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9.5" stroke="#cda149" stroke-width="1.4"/>
+      <path d="M12 6.2 L12 12 L16 14.4" stroke="#cda149" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="wordmark">
+      <span class="ticker">XAUUSD</span>
+      <span class="sub">Daily Bias</span>
+    </div>
   </div>
 
-  <div class="card" id="resultCard">
-    <div id="biasBadge" class="bias-badge"></div>
-    <pre id="reportText"></pre>
-    <a id="sessionLink" class="session-link" href="#" target="_blank">View full routine session →</a>
+  <div class="screens">
+    <section class="screen screen--idle" id="screenIdle">
+      <div class="gauge-wrap" id="gaugeWrap">
+        <svg class="gauge-ring" viewBox="0 0 200 200">
+          <circle class="track" cx="100" cy="100" r="98"/>
+          <circle class="sweep" cx="100" cy="100" r="98"/>
+        </svg>
+        <button class="gauge-btn" id="startBtn">
+          <svg class="gauge-icon" viewBox="0 0 24 24" fill="none" id="btnIcon">
+            <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor"/>
+          </svg>
+          <span class="gauge-label" id="btnLabel">Start</span>
+          <span class="gauge-sub" id="btnSub">Run bias</span>
+        </button>
+      </div>
+      <p class="idle-hint">Fires the structural + intraday read and pulls the result straight from Calendar.</p>
+      <div class="status-row" id="statusRow" style="display:none;">
+        <span class="dot"></span>
+        <span id="statusText">Routine running…</span>
+      </div>
+    </section>
+
+    <section class="screen screen--result" id="screenResult">
+      <div class="ticket">
+        <div class="ticket-head">
+          <span class="bias-pill none" id="biasPill">—</span>
+          <span class="ticket-time" id="ticketTime"></span>
+        </div>
+        <div class="perforation"></div>
+        <pre class="ticket-body" id="reportText"></pre>
+      </div>
+      <a class="session-row" id="sessionLink" href="#" target="_blank" rel="noopener" hidden>
+        <span>View full routine session</span>
+        <span class="chev">→</span>
+      </a>
+      <button class="again-btn" id="againBtn">Run again</button>
+    </section>
   </div>
+</div>
 
 <script>
-const startBtn = document.getElementById('startBtn');
-const statusLine = document.getElementById('statusLine');
-const statusText = document.getElementById('statusText');
-const spinner = document.getElementById('spinner');
-const resultCard = document.getElementById('resultCard');
-const biasBadge = document.getElementById('biasBadge');
-const reportText = document.getElementById('reportText');
-const sessionLink = document.getElementById('sessionLink');
+(function () {
+  const startBtn = document.getElementById('startBtn');
+  const btnIcon = document.getElementById('btnIcon');
+  const btnLabel = document.getElementById('btnLabel');
+  const btnSub = document.getElementById('btnSub');
+  const gaugeWrap = document.getElementById('gaugeWrap');
+  const statusRow = document.getElementById('statusRow');
+  const statusText = document.getElementById('statusText');
 
-let pollTimer = null;
+  const screenIdle = document.getElementById('screenIdle');
+  const screenResult = document.getElementById('screenResult');
+  const biasPill = document.getElementById('biasPill');
+  const ticketTime = document.getElementById('ticketTime');
+  const reportText = document.getElementById('reportText');
+  const sessionLink = document.getElementById('sessionLink');
+  const againBtn = document.getElementById('againBtn');
 
-function setStatus(text, showSpinner) {
-  statusLine.style.display = 'flex';
-  statusText.textContent = text;
-  spinner.style.display = showSpinner ? 'inline-block' : 'none';
-}
+  let pollTimer = null;
 
-function detectBias(text) {
-  const match = text.match(/BIAS:\s*(BUY|SELL|NONE)/i);
-  return match ? match[1].toUpperCase() : null;
-}
+  function setPending(isPending) {
+    startBtn.disabled = isPending;
+    gaugeWrap.classList.toggle('pending', isPending);
+    btnIcon.style.display = isPending ? 'none' : '';
+    btnLabel.textContent = isPending ? '' : 'Start';
+    btnSub.textContent = isPending ? '' : 'Run bias';
+  }
 
-async function startBot() {
-  startBtn.disabled = true;
-  resultCard.style.display = 'none';
-  setStatus('Firing routine...', true);
+  function setStatus(text, isError) {
+    statusRow.style.display = 'flex';
+    statusRow.classList.toggle('error', !!isError);
+    statusText.textContent = text;
+  }
 
-  const res = await fetch('/api/start', { method: 'POST' });
-  if (!res.ok) {
-    let detail = '';
+  function detectBias(text) {
+    const match = (text || '').match(/BIAS:\s*(BUY|SELL|NONE)/i);
+    return match ? match[1].toUpperCase() : null;
+  }
+
+  function goToResult() {
+    screenIdle.classList.add('leaving');
+    screenResult.classList.add('entered');
+  }
+
+  function reset() {
+    screenIdle.classList.remove('leaving');
+    screenResult.classList.remove('entered');
+    statusRow.style.display = 'none';
+    setPending(false);
+  }
+
+  async function startBot() {
+    setPending(true);
+    setStatus('Firing routine…', false);
+
+    let res;
     try {
-      const err = await res.json();
-      detail = err.detail || JSON.stringify(err);
+      res = await fetch('/api/start', { method: 'POST' });
     } catch (e) {
-      detail = res.statusText || 'unknown error';
+      setStatus('Failed to start — ' + e.message, true);
+      setPending(false);
+      return;
     }
-    setStatus('Failed to start — ' + detail, false);
-    startBtn.disabled = false;
-    return;
+
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const err = await res.json();
+        detail = err.detail || JSON.stringify(err);
+      } catch (e) {
+        detail = res.statusText || 'unknown error';
+      }
+      setStatus('Failed to start — ' + detail, true);
+      setPending(false);
+      return;
+    }
+
+    setStatus('Routine running…', false);
+    pollStatus();
   }
 
-  setStatus('Routine running — waiting for result...', true);
-  pollStatus();
-}
+  async function pollStatus() {
+    const res = await fetch('/api/status');
+    const data = await res.json();
 
-async function pollStatus() {
-  const res = await fetch('/api/status');
-  const data = await res.json();
-
-  if (data.status === 'pending') {
-    setStatus(`Routine running — waiting for result... (${data.elapsed_seconds}s)`, true);
-    pollTimer = setTimeout(pollStatus, 5000);
-  } else if (data.status === 'done') {
-    setStatus('Done.', false);
-    startBtn.disabled = false;
-
-    const bias = detectBias(data.description || '');
-    biasBadge.textContent = bias ? `BIAS: ${bias}` : (data.title || 'Result');
-    biasBadge.className = 'bias-badge ' + (bias ? bias.toLowerCase() : '');
-
-    reportText.textContent = data.description || '(no description found)';
-    sessionLink.href = data.session_url || '#';
-    resultCard.style.display = 'block';
-  } else if (data.status === 'timeout') {
-    setStatus('Timed out waiting for the calendar event. Check the session directly.', false);
-    startBtn.disabled = false;
-    if (data.session_url) {
-      sessionLink.href = data.session_url;
-      sessionLink.textContent = 'View routine session →';
-      resultCard.style.display = 'block';
+    if (data.status === 'pending') {
+      setStatus('Routine running… (' + data.elapsed_seconds + 's)', false);
+      pollTimer = setTimeout(pollStatus, 5000);
+      return;
     }
-  } else {
-    setStatus('Unexpected status: ' + data.status, false);
-    startBtn.disabled = false;
-  }
-}
 
-startBtn.addEventListener('click', startBot);
+    setPending(false);
+
+    if (data.status === 'done') {
+      const bias = detectBias(data.description);
+      biasPill.className = 'bias-pill ' + (bias ? bias.toLowerCase() : 'none');
+      biasPill.textContent = bias ? ('BIAS: ' + bias) : (data.title || 'Result');
+      ticketTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      reportText.textContent = data.description || '(no description found)';
+
+      if (data.session_url) {
+        sessionLink.href = data.session_url;
+        sessionLink.hidden = false;
+      } else {
+        sessionLink.hidden = true;
+      }
+
+      goToResult();
+    } else if (data.status === 'timeout') {
+      biasPill.className = 'bias-pill none';
+      biasPill.textContent = 'TIMED OUT';
+      ticketTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      reportText.textContent = 'Timed out waiting for the calendar event. Check the session directly.';
+
+      if (data.session_url) {
+        sessionLink.href = data.session_url;
+        sessionLink.hidden = false;
+      } else {
+        sessionLink.hidden = true;
+      }
+
+      goToResult();
+    } else {
+      setStatus('Unexpected status: ' + data.status, true);
+    }
+  }
+
+  startBtn.addEventListener('click', startBot);
+  againBtn.addEventListener('click', reset);
+})();
 </script>
 </body>
 </html>
