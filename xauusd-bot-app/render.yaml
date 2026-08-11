@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: xauusd-bias-bot
+    runtime: python
+    plan: free
+    rootDir: xauusd-bot-app
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: ROUTINE_FIRE_URL
+        sync: false
+      - key: ROUTINE_BEARER_TOKEN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        value: primary
