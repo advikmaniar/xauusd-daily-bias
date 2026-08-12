@@ -71,8 +71,38 @@ def start_bot():
         # store a mock event created at fired_at
         LAST_RUN["mock_event"] = {
             "created": fired_at.isoformat(),
-            "summary": "XAUUSD Bias — BIAS: BUY",
-            "description": "BIAS: BUY\nMocked result for local development.",
+            "summary": "XAUUSD Bias – SELL",
+            "description": (
+                "XAUUSD BIAS — Tuesday, August 11, 2026\n"
+                "Price: 4368.80 | vs SMA50: above by 220.3 | vs SMA100: below by 20.4\n"
+                "Timeframe alignment: intraday fully_aligned_bearish (H1/M15/M5) vs "
+                "structural fully_aligned_bullish (D1/H4) — reversal_against_structure=true\n\n"
+                "Key pointers (max 4, only if genuinely impactful):\n"
+                "- Reversal against structure: D1/H4 remain bullish (RSI 67.9/51.4) but "
+                "H1/M15/M5 are fully aligned bearish — price is -1.49% off the $4435.24 "
+                "high set 19h ago; today's bias follows this intraday pullback, not the "
+                "structural trend.\n"
+                "- No major US data today — CPI is tomorrow (Wed Aug 12) and PPI/jobless "
+                "claims Thursday (Aug 14) — so no scheduled catalyst should flip direction "
+                "intraday, but positioning ahead of CPI favors caution.\n"
+                "- US-Iran military tensions remain elevated (US strikes, Iranian "
+                "retaliation on Gulf bases), keeping a geopolitical safe-haven bid under "
+                "gold and raising headline-reversal risk even as diplomatic signals "
+                "(Rubio) cap urgency.\n"
+                "- DXY is firm near 99.8 ahead of Wednesday's CPI, a mild headwind for "
+                "gold; price is still trading just below the D1 SMA100 (4389) after "
+                "failing to reclaim it.\n\n"
+                "BIAS: SELL\n"
+                "Confidence: Medium\n"
+                "Why: Intraday timeframes are fully aligned bearish in a pullback from "
+                "the recent high while structural trend stays bullish, and with no "
+                "scheduled US data today to disrupt it, price action should keep "
+                "favoring the downside within the range.\n"
+                "Invalidation: A reclaim and hold above the H1 SMA20 (~4382) with M15 "
+                "structure flipping bullish, or a sudden Iran de-escalation/dollar-selloff "
+                "headline driving price back above the $4400 area, would invalidate the "
+                "bearish bias."
+            ),
             "start": {"dateTime": fired_at.isoformat()},
         }
         return jsonify({

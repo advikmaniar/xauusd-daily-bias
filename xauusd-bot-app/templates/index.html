@@ -14,9 +14,11 @@
     --panel: #131418;
     --panel-raised: #1a1b21;
     --hairline: #2a2b33;
+    --hairline-soft: rgba(255,255,255,0.06);
     --paper: #eceef2;
     --ink-2: #7c7e8c;
     --gold: #cda149;
+    --gold-dim: rgba(205, 161, 73, 0.14);
     --buy: #35c78a;
     --buy-dim: rgba(53, 199, 138, 0.14);
     --sell: #e5566a;
@@ -224,8 +226,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
     padding: 22px 22px 20px;
   }
+
+  .bias-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
   .bias-pill {
     display: inline-flex;
@@ -250,18 +255,39 @@
   .bias-pill.sell { background: var(--sell-dim); color: var(--sell); }
   .bias-pill.none { background: var(--none-dim); color: var(--none); }
 
+  .confidence-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+  }
+  .confidence-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .confidence-chip.low { background: var(--sell-dim); color: var(--sell); }
+  .confidence-chip.medium { background: var(--gold-dim); color: var(--gold); }
+  .confidence-chip.high { background: var(--buy-dim); color: var(--buy); }
+  .confidence-chip.neutral { background: transparent; border-color: var(--hairline); color: var(--ink-2); }
+  .confidence-chip.neutral::before { display: none; }
+  .confidence-chip[hidden] { display: none; }
+
   .ticket-time {
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .perforation {
     position: relative;
     height: 1px;
     background: repeating-linear-gradient(to right, var(--hairline) 0 6px, transparent 6px 12px);
-    margin: 0 0 2px;
+    margin: 0;
   }
 
   .perforation::before, .perforation::after {
@@ -278,7 +304,46 @@
   .perforation::before { left: -10px; }
   .perforation::after { right: -10px; }
 
-  .ticket-body {
+  .ticket-stats { display: flex; flex-direction: column; }
+  .ticket-stats > * + * { border-top: 1px solid var(--hairline-soft); }
+  .ticket-stats[hidden] { display: none; }
+
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between; padding: 13px 22px; gap: 12px; }
+  .stat-row[hidden] { display: none; }
+  .stat-label { font-size: 12.5px; color: var(--ink-2); font-weight: 500; }
+  .stat-value { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--paper); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .stat-value-group { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .stat-delta { font-family: var(--font-mono); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stat-delta.above { color: var(--buy); }
+  .stat-delta.below { color: var(--sell); }
+
+  .stat-block { padding: 13px 22px; }
+  .stat-block[hidden] { display: none; }
+  .stat-prose { margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: var(--paper); }
+
+  .ticket-keypoints { padding: 18px 22px 22px; border-top: 1px solid var(--hairline); }
+  .ticket-keypoints[hidden] { display: none; }
+  .section-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 10px; }
+  .key-summary { margin: 0 0 14px; font-size: 13.5px; line-height: 1.6; font-weight: 500; color: var(--paper); }
+  .key-summary[hidden] { display: none; }
+
+  .key-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .key-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.55; color: var(--paper); }
+  .key-index {
+    flex-shrink: 0;
+    width: 18px; height: 18px;
+    border-radius: 5px;
+    background: var(--gold-dim);
+    color: var(--gold);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+
+  .raw-fallback {
     margin: 0;
     padding: 22px;
     font-family: var(--font-mono);
@@ -287,6 +352,7 @@
     color: var(--paper);
     white-space: pre-wrap;
   }
+  .raw-fallback[hidden] { display: none; }
 
   .session-row {
     display: flex;
@@ -372,11 +438,43 @@
     <section class="screen screen--result" id="screenResult">
       <div class="ticket">
         <div class="ticket-head">
-          <span class="bias-pill none" id="biasPill">—</span>
+          <div class="bias-group">
+            <span class="bias-pill none" id="biasPill">—</span>
+            <span class="confidence-chip" id="confChip" hidden></span>
+          </div>
           <span class="ticket-time" id="ticketTime"></span>
         </div>
         <div class="perforation"></div>
-        <pre class="ticket-body" id="reportText"></pre>
+        <div class="ticket-stats" id="ticketStats">
+          <div class="stat-row" id="rowPrice" hidden>
+            <span class="stat-label">Current Price</span>
+            <span class="stat-value" id="valPrice"></span>
+          </div>
+          <div class="stat-row" id="rowSma50" hidden>
+            <span class="stat-label">SMA 50</span>
+            <span class="stat-value-group">
+              <span class="stat-value" id="valSma50"></span>
+              <span class="stat-delta" id="deltaSma50"></span>
+            </span>
+          </div>
+          <div class="stat-row" id="rowSma100" hidden>
+            <span class="stat-label">SMA 100</span>
+            <span class="stat-value-group">
+              <span class="stat-value" id="valSma100"></span>
+              <span class="stat-delta" id="deltaSma100"></span>
+            </span>
+          </div>
+          <div class="stat-block" id="rowAlign" hidden>
+            <span class="stat-label">Timeframe Alignment</span>
+            <p class="stat-prose" id="valAlign"></p>
+          </div>
+        </div>
+        <div class="ticket-keypoints" id="keySection" hidden>
+          <span class="section-label">Key Points</span>
+          <p class="key-summary" id="keySummary"></p>
+          <ol class="key-list" id="keyList"></ol>
+        </div>
+        <pre class="raw-fallback" id="rawFallback" hidden></pre>
       </div>
       <a class="session-row" id="sessionLink" href="#" target="_blank" rel="noopener" hidden>
         <span>View full routine session</span>
@@ -400,12 +498,135 @@
   const screenIdle = document.getElementById('screenIdle');
   const screenResult = document.getElementById('screenResult');
   const biasPill = document.getElementById('biasPill');
+  const confChip = document.getElementById('confChip');
   const ticketTime = document.getElementById('ticketTime');
-  const reportText = document.getElementById('reportText');
+  const rowPrice = document.getElementById('rowPrice'), valPrice = document.getElementById('valPrice');
+  const rowSma50 = document.getElementById('rowSma50'), valSma50 = document.getElementById('valSma50'), deltaSma50 = document.getElementById('deltaSma50');
+  const rowSma100 = document.getElementById('rowSma100'), valSma100 = document.getElementById('valSma100'), deltaSma100 = document.getElementById('deltaSma100');
+  const rowAlign = document.getElementById('rowAlign'), valAlign = document.getElementById('valAlign');
+  const keySection = document.getElementById('keySection');
+  const keySummary = document.getElementById('keySummary');
+  const keyList = document.getElementById('keyList');
+  const rawFallback = document.getElementById('rawFallback');
   const sessionLink = document.getElementById('sessionLink');
   const againBtn = document.getElementById('againBtn');
 
   let pollTimer = null;
+
+  function parseReport(desc) {
+    desc = desc || '';
+    const biasMatch = desc.match(/BIAS:\s*(BUY|SELL|NONE)/i);
+    const bias = biasMatch ? biasMatch[1].toUpperCase() : null;
+
+    const confMatch = desc.match(/Confidence:\s*([A-Za-z]+)/i);
+    const confidence = confMatch ? confMatch[1] : null;
+
+    const priceLine = desc.match(/Price:\s*([\d,.]+)\s*\|\s*vs SMA50:\s*(above|below)\s*by\s*([\d,.]+)\s*\|\s*vs SMA100:\s*(above|below)\s*by\s*([\d,.]+)/i);
+    let price = null, sma50 = null, dir50 = null, delta50 = null, sma100 = null, dir100 = null, delta100 = null;
+    if (priceLine) {
+      price = parseFloat(priceLine[1].replace(/,/g, ''));
+      dir50 = priceLine[2].toLowerCase();
+      delta50 = parseFloat(priceLine[3].replace(/,/g, ''));
+      sma50 = dir50 === 'above' ? price - delta50 : price + delta50;
+      dir100 = priceLine[4].toLowerCase();
+      delta100 = parseFloat(priceLine[5].replace(/,/g, ''));
+      sma100 = dir100 === 'above' ? price - delta100 : price + delta100;
+    }
+
+    const alignMatch = desc.match(/Timeframe alignment:\s*(.+)/i);
+    const alignment = alignMatch ? alignMatch[1].trim() : null;
+
+    const whyMatch = desc.match(/Why:\s*(.+)/i);
+    const summary = whyMatch ? whyMatch[1].trim() : null;
+
+    const pointsMatch = desc.match(/Key pointers[^\n]*\n([\s\S]*?)\n\s*\nBIAS:/i);
+    let points = [];
+    if (pointsMatch) {
+      points = pointsMatch[1].split('\n')
+        .map(function (l) { return l.trim(); })
+        .filter(function (l) { return l.indexOf('-') === 0; })
+        .map(function (l) { return l.replace(/^-+\s*/, ''); });
+    }
+
+    return {
+      bias: bias, confidence: confidence,
+      price: price,
+      sma50: sma50, dir50: dir50, delta50: delta50,
+      sma100: sma100, dir100: dir100, delta100: delta100,
+      alignment: alignment, summary: summary, points: points
+    };
+  }
+
+  function fmt(n) {
+    return n == null ? null : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function deltaText(dir, delta) {
+    if (dir == null || delta == null) return null;
+    return (dir === 'above' ? 'Above by ' : 'Below by ') + fmt(delta);
+  }
+
+  function renderTicket(bias, confidence, desc, fallbackTitle) {
+    const r = parseReport(desc);
+    const finalBias = bias || r.bias;
+
+    biasPill.className = 'bias-pill ' + (finalBias ? finalBias.toLowerCase() : 'none');
+    biasPill.textContent = finalBias || fallbackTitle || 'RESULT';
+
+    const conf = confidence || r.confidence;
+    const confKey = conf ? conf.toLowerCase() : null;
+    const confClass = ['low', 'medium', 'high'].indexOf(confKey) !== -1 ? confKey : 'neutral';
+    confChip.hidden = !conf;
+    if (conf) {
+      confChip.className = 'confidence-chip ' + confClass;
+      confChip.textContent = conf + ' confidence';
+    }
+
+    ticketTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    rowPrice.hidden = r.price == null;
+    if (r.price != null) valPrice.textContent = fmt(r.price);
+
+    rowSma50.hidden = r.sma50 == null;
+    if (r.sma50 != null) {
+      valSma50.textContent = fmt(r.sma50);
+      deltaSma50.textContent = deltaText(r.dir50, r.delta50);
+      deltaSma50.className = 'stat-delta ' + r.dir50;
+    }
+
+    rowSma100.hidden = r.sma100 == null;
+    if (r.sma100 != null) {
+      valSma100.textContent = fmt(r.sma100);
+      deltaSma100.textContent = deltaText(r.dir100, r.delta100);
+      deltaSma100.className = 'stat-delta ' + r.dir100;
+    }
+
+    rowAlign.hidden = !r.alignment;
+    if (r.alignment) valAlign.textContent = r.alignment;
+
+    const hasKeyContent = r.summary || r.points.length;
+    keySection.hidden = !hasKeyContent;
+    if (hasKeyContent) {
+      keySummary.hidden = !r.summary;
+      if (r.summary) keySummary.textContent = r.summary;
+      keyList.innerHTML = '';
+      r.points.forEach(function (p, i) {
+        const li = document.createElement('li');
+        const ix = document.createElement('span');
+        ix.className = 'key-index';
+        ix.textContent = String(i + 1);
+        const tx = document.createElement('span');
+        tx.textContent = p;
+        li.appendChild(ix);
+        li.appendChild(tx);
+        keyList.appendChild(li);
+      });
+    }
+
+    const nothingParsed = r.price == null && !r.alignment && !hasKeyContent;
+    rawFallback.hidden = !nothingParsed;
+    if (nothingParsed) rawFallback.textContent = desc || '(no description found)';
+  }
 
   function setPending(isPending) {
     startBtn.disabled = isPending;
@@ -419,11 +640,6 @@
     statusRow.style.display = 'flex';
     statusRow.classList.toggle('error', !!isError);
     statusText.textContent = text;
-  }
-
-  function detectBias(text) {
-    const match = (text || '').match(/BIAS:\s*(BUY|SELL|NONE)/i);
-    return match ? match[1].toUpperCase() : null;
   }
 
   function goToResult() {
@@ -481,11 +697,7 @@
     setPending(false);
 
     if (data.status === 'done') {
-      const bias = detectBias(data.description);
-      biasPill.className = 'bias-pill ' + (bias ? bias.toLowerCase() : 'none');
-      biasPill.textContent = bias ? ('BIAS: ' + bias) : (data.title || 'Result');
-      ticketTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      reportText.textContent = data.description || '(no description found)';
+      renderTicket(null, null, data.description, data.title);
 
       if (data.session_url) {
         sessionLink.href = data.session_url;
@@ -498,8 +710,12 @@
     } else if (data.status === 'timeout') {
       biasPill.className = 'bias-pill none';
       biasPill.textContent = 'TIMED OUT';
+      confChip.hidden = true;
       ticketTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      reportText.textContent = 'Timed out waiting for the calendar event. Check the session directly.';
+      rowPrice.hidden = rowSma50.hidden = rowSma100.hidden = rowAlign.hidden = true;
+      keySection.hidden = true;
+      rawFallback.hidden = false;
+      rawFallback.textContent = 'Timed out waiting for the calendar event. Check the session directly.';
 
       if (data.session_url) {
         sessionLink.href = data.session_url;
