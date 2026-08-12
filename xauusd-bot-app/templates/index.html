@@ -90,7 +90,8 @@
     position: relative;
     flex: 1;
     display: flex;
-    overflow: hidden;
+    flex-direction: column;
+    overflow-x: hidden;
   }
 
   .screen {
@@ -112,6 +113,8 @@
     transform: translateX(100%);
     opacity: 0;
     pointer-events: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .screen--result.entered { transform: translateX(0); opacity: 1; pointer-events: auto; }
@@ -642,12 +645,23 @@
     statusText.textContent = text;
   }
 
+  let settleTimer = null;
+
   function goToResult() {
     screenIdle.classList.add('leaving');
     screenResult.classList.add('entered');
+    // Once the slide-in finishes, drop out of the absolute overlay stack
+    // and back into normal flow so the page grows to fit the full ticket
+    // (price/SMA/key points) instead of being clipped to one screen height.
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(function () {
+      screenResult.style.position = 'relative';
+    }, 480);
   }
 
   function reset() {
+    clearTimeout(settleTimer);
+    screenResult.style.position = '';
     screenIdle.classList.remove('leaving');
     screenResult.classList.remove('entered');
     statusRow.style.display = 'none';
