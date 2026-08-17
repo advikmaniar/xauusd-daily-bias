@@ -325,6 +325,13 @@
   .stat-block[hidden] { display: none; }
   .stat-prose { margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: var(--paper); }
 
+  .liquidity-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .liq-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .liq-half { display: flex; align-items: baseline; gap: 6px; flex: 1; }
+  .liq-half.align-end { justify-content: flex-end; }
+  .liq-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--ink-2); }
+  .liq-value { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--paper); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
   .ticket-keypoints { padding: 18px 22px 22px; border-top: 1px solid var(--hairline); }
   .ticket-keypoints[hidden] { display: none; }
   .section-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 10px; }
@@ -471,6 +478,23 @@
             <span class="stat-label">Timeframe Alignment</span>
             <p class="stat-prose" id="valAlign"></p>
           </div>
+          <div class="stat-block" id="rowLiquidity" hidden>
+            <span class="stat-label">Liquidity Zones</span>
+            <div class="liquidity-grid">
+              <div class="liq-row">
+                <span class="liq-half"><span class="liq-label">PDL</span><span class="liq-value" id="valPdl"></span></span>
+                <span class="liq-half align-end"><span class="liq-label">PDH</span><span class="liq-value" id="valPdh"></span></span>
+              </div>
+              <div class="liq-row">
+                <span class="liq-half"><span class="liq-label">PSL</span><span class="liq-value" id="valPsl"></span></span>
+                <span class="liq-half align-end"><span class="liq-label">PSH</span><span class="liq-value" id="valPsh"></span></span>
+              </div>
+              <div class="liq-row">
+                <span class="liq-half"><span class="liq-label">PWL</span><span class="liq-value" id="valPwl"></span></span>
+                <span class="liq-half align-end"><span class="liq-label">PWH</span><span class="liq-value" id="valPwh"></span></span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="ticket-keypoints" id="keySection" hidden>
           <span class="section-label">Key Points</span>
@@ -507,6 +531,10 @@
   const rowSma50 = document.getElementById('rowSma50'), valSma50 = document.getElementById('valSma50'), deltaSma50 = document.getElementById('deltaSma50');
   const rowSma100 = document.getElementById('rowSma100'), valSma100 = document.getElementById('valSma100'), deltaSma100 = document.getElementById('deltaSma100');
   const rowAlign = document.getElementById('rowAlign'), valAlign = document.getElementById('valAlign');
+  const rowLiquidity = document.getElementById('rowLiquidity');
+  const valPdl = document.getElementById('valPdl'), valPdh = document.getElementById('valPdh');
+  const valPsl = document.getElementById('valPsl'), valPsh = document.getElementById('valPsh');
+  const valPwl = document.getElementById('valPwl'), valPwh = document.getElementById('valPwh');
   const keySection = document.getElementById('keySection');
   const keySummary = document.getElementById('keySummary');
   const keyList = document.getElementById('keyList');
@@ -539,6 +567,16 @@
     const alignMatch = desc.match(/Timeframe alignment:\s*(.+)/i);
     const alignment = alignMatch ? alignMatch[1].trim() : null;
 
+    const liqMatch = desc.match(/Liquidity zones:\s*PDL\s*([\d,.]+)\s*\|\s*PDH\s*([\d,.]+)\s*\|\s*PSL\s*([\d,.]+)\s*\|\s*PSH\s*([\d,.]+)\s*\|\s*PWL\s*([\d,.]+)\s*\|\s*PWH\s*([\d,.]+)/i);
+    let liquidity = null;
+    if (liqMatch) {
+      liquidity = {
+        pdl: parseFloat(liqMatch[1].replace(/,/g, '')), pdh: parseFloat(liqMatch[2].replace(/,/g, '')),
+        psl: parseFloat(liqMatch[3].replace(/,/g, '')), psh: parseFloat(liqMatch[4].replace(/,/g, '')),
+        pwl: parseFloat(liqMatch[5].replace(/,/g, '')), pwh: parseFloat(liqMatch[6].replace(/,/g, ''))
+      };
+    }
+
     const whyMatch = desc.match(/Why:\s*(.+)/i);
     const summary = whyMatch ? whyMatch[1].trim() : null;
 
@@ -556,7 +594,7 @@
       price: price,
       sma50: sma50, dir50: dir50, delta50: delta50,
       sma100: sma100, dir100: dir100, delta100: delta100,
-      alignment: alignment, summary: summary, points: points
+      alignment: alignment, liquidity: liquidity, summary: summary, points: points
     };
   }
 
@@ -607,6 +645,16 @@
     rowAlign.hidden = !r.alignment;
     if (r.alignment) valAlign.textContent = r.alignment;
 
+    rowLiquidity.hidden = !r.liquidity;
+    if (r.liquidity) {
+      valPdl.textContent = fmt(r.liquidity.pdl);
+      valPdh.textContent = fmt(r.liquidity.pdh);
+      valPsl.textContent = fmt(r.liquidity.psl);
+      valPsh.textContent = fmt(r.liquidity.psh);
+      valPwl.textContent = fmt(r.liquidity.pwl);
+      valPwh.textContent = fmt(r.liquidity.pwh);
+    }
+
     const hasKeyContent = r.summary || r.points.length;
     keySection.hidden = !hasKeyContent;
     if (hasKeyContent) {
@@ -626,7 +674,7 @@
       });
     }
 
-    const nothingParsed = r.price == null && !r.alignment && !hasKeyContent;
+    const nothingParsed = r.price == null && !r.alignment && !r.liquidity && !hasKeyContent;
     rawFallback.hidden = !nothingParsed;
     if (nothingParsed) rawFallback.textContent = desc || '(no description found)';
   }
@@ -726,7 +774,7 @@
       biasPill.textContent = 'TIMED OUT';
       confChip.hidden = true;
       ticketTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      rowPrice.hidden = rowSma50.hidden = rowSma100.hidden = rowAlign.hidden = true;
+      rowPrice.hidden = rowSma50.hidden = rowSma100.hidden = rowAlign.hidden = rowLiquidity.hidden = true;
       keySection.hidden = true;
       rawFallback.hidden = false;
       rawFallback.textContent = 'Timed out waiting for the calendar event. Check the session directly.';

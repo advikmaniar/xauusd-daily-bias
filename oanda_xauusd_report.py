@@ -25,7 +25,7 @@ Env vars required (set in the Claude Code routine's Environment):
 import os
 import json
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 OANDA_API_TOKEN = os.environ["OANDA_API_TOKEN"]
 OANDA_ACCOUNT_ID = os.environ["OANDA_ACCOUNT_ID"]
@@ -179,6 +179,136 @@ def session_range(candles, start_h, end_h):
     return {"high": round(max(c["high"] for c in rows), 2), "low": round(min(c["low"] for c in rows), 2)}
 
 
+SESSIONS = [("Asian", 0, 8), ("London", 8, 13), ("NY", 13, 21)]
+
+
+def session_range_for_date(candles, date, start_h, end_h):
+    rows = [c for c in candles
+            if datetime.fromisoformat(c["time"].replace("Z", "+00:00")).date() == date
+            and start_h <= datetime.fromisoformat(c["time"].replace("Z", "+00:00")).hour < end_h]
+    if not rows:
+        return None
+    return {"high": round(max(c["high"] for c in rows), 2), "low": round(min(c["low"] for c in rows), 2)}
+
+
+def previous_session(h1_candles):
+    """The most recently *completed* session (Asian/London/NY), which may be
+    from earlier today or from yesterday if today's first session hasn't
+    closed yet. Used as a liquidity reference distinct from the full prior
+    day's high/low."""
+    now = datetime.now(timezone.utc)
+    candidates = []
+    for day_offset in (1, 0):
+        d = (now - timedelta(days=day_offset)).date()
+        for name, start_h, end_h in SESSIONS:
+            end_dt = datetime(d.year, d.month, d.day, end_h % 24, tzinfo=timezone.utc)
+            if end_h == 24:
+                end_dt += timedelta(days=1)
+            if end_dt <= now:
+                candidates.append((end_dt, name, d, start_h, end_h))
+    if not candidates:
+        return None
+    end_dt, name, d, start_h, end_h = max(candidates, key=lambda c: c[0])
+    rng = session_range_for_date(h1_candles, d, start_h, end_h)
+    if not rng:
+        return None
+    return {"name": name, "date": d.isoformat(), **rng}
+
+
+def previous_week_range(d1_candles):
+    """High/low of the most recent fully completed ISO week, from daily
+    candles — a longer-horizon liquidity reference than prior day/session."""
+    current_week = datetime.now(timezone.utc).isocalendar()[:2]
+    weeks = {}
+    for c in d1_candles:
+        dt = datetime.fromisoformat(c["time"].replace("Z", "+00:00"))
+        wk = dt.isocalendar()[:2]
+        if wk == current_week:
+            continue
+        weeks.setdefault(wk, []).append(c)
+    if not weeks:
+        return None
+    last_week = max(weeks.keys())
+    rows = weeks[last_week]
+    dates = sorted(datetime.fromisoformat(c["time"].replace("Z", "+00:00")).date() for c in rows)
+    return {
+        "week_start": dates[0].isoformat(),
+        "week_end": dates[-1].isoformat(),
+        "high": round(max(c["high"] for c in rows), 2),
+        "low": round(min(c["low"] for c in rows), 2),
+    }
+
+
+def fib_retracement(extreme):
+    """Standard fib retracement levels across the most recent significant
+    swing (the 72h H1 extreme). Direction follows whichever leg is more
+    recent: high after low = up-swing (retracement support below the high),
+    low after high = down-swing (retracement resistance above the low)."""
+    if not extreme:
+        return None
+    high, low = extreme["recent_high"], extreme["recent_low"]
+    span = high - low
+    if span <= 0:
+        return None
+    up_swing = extreme["hours_since_high"] <= extreme["hours_since_low"]
+    ratios = [0.0, 23.6, 38.2, 50.0, 61.8, 78.6, 100.0]
+    levels = {}
+    for r in ratios:
+        frac = r / 100
+        levels[str(r)] = round(high - span * frac, 2) if up_swing else round(low + span * frac, 2)
+    return {
+        "swing_direction": "up" if up_swing else "down",
+        "swing_low": low,
+        "swing_high": high,
+        "levels": levels,
+    }
+
+
+def annotate_distances(levels_flat, current_price, near_threshold_pct=0.15):
+    """levels_flat: dict of {label: price}. Adds pct distance from current
+    price and a `near` flag so the routine doesn't have to do this math
+    itself (and can't silently skip it)."""
+    out = {}
+    for label, price in levels_flat.items():
+        if price is None:
+            continue
+        pct = round(abs(current_price - price) / current_price * 100, 3)
+        out[label] = {"price": price, "distance_pct": pct, "near": pct <= near_threshold_pct}
+    return out
+
+
+def find_confluence(liquidity_flat, fib_flat, current_price, cluster_tolerance_pct=0.25, relevance_pct=2.0):
+    """Flags pairs of liquidity levels and fib levels that sit close to each
+    other (not just close to price) — a real confluence zone, which is what
+    actually matters for reversal odds. Only surfaces zones within
+    `relevance_pct` of current price since this report is for today's bias."""
+    zones = []
+    for liq_name, liq_price in liquidity_flat.items():
+        if liq_price is None:
+            continue
+        for fib_name, fib_price in fib_flat.items():
+            if fib_price is None:
+                continue
+            cluster_pct = abs(liq_price - fib_price) / current_price * 100
+            if cluster_pct > cluster_tolerance_pct:
+                continue
+            avg_price = round((liq_price + fib_price) / 2, 2)
+            price_distance_pct = round(abs(current_price - avg_price) / current_price * 100, 3)
+            if price_distance_pct > relevance_pct:
+                continue
+            zones.append({
+                "liquidity_level": liq_name,
+                "liquidity_price": liq_price,
+                "fib_level": fib_name,
+                "fib_price": fib_price,
+                "zone_price": avg_price,
+                "distance_from_price_pct": price_distance_pct,
+                "price_inside_zone": price_distance_pct <= 0.15,
+            })
+    zones.sort(key=lambda z: z["distance_from_price_pct"])
+    return zones
+
+
 def group_alignment(trends_dict):
     biases = [t["bias_vs_sma20"] for t in trends_dict.values() if t]
     bullish, bearish, total = biases.count("bullish"), biases.count("bearish"), len(biases)
@@ -239,13 +369,32 @@ def main():
     extreme = recent_extreme(h1, 72)
     reversal = detect_reversal(structural_alignment, intraday_alignment, extreme)
 
+    prior_day = {"high": d1[-2]["high"], "low": d1[-2]["low"], "close": d1[-2]["close"]} if len(d1) >= 2 else None
+    prior_sess = previous_session(h1)
+    prior_week = previous_week_range(d1)
+    fib = fib_retracement(extreme)
+
+    liquidity_flat = {}
+    if prior_day:
+        liquidity_flat["prior_day_high"] = prior_day["high"]
+        liquidity_flat["prior_day_low"] = prior_day["low"]
+    if prior_sess:
+        liquidity_flat[f"prior_session_{prior_sess['name'].lower()}_high"] = prior_sess["high"]
+        liquidity_flat[f"prior_session_{prior_sess['name'].lower()}_low"] = prior_sess["low"]
+    if prior_week:
+        liquidity_flat["prior_week_high"] = prior_week["high"]
+        liquidity_flat["prior_week_low"] = prior_week["low"]
+
+    fib_flat = {("fib_" + k): v for k, v in fib["levels"].items()} if fib else {}
+
+    key_levels = annotate_distances({**liquidity_flat, **fib_flat}, live["mid"])
+    confluence_zones = find_confluence(liquidity_flat, fib_flat, live["mid"])
+
     report = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "day_of_week": datetime.now(timezone.utc).strftime("%A"),
         "live_price": live,
-        "prior_day": {
-            "high": d1[-2]["high"], "low": d1[-2]["low"], "close": d1[-2]["close"],
-        } if len(d1) >= 2 else None,
+        "prior_day": prior_day,
         "sma_50_d1": sma(d1, 50),
         "sma_100_d1": sma(d1, 100),
         "atr_14_d1": atr(d1, 14),
@@ -265,6 +414,12 @@ def main():
             "H1": swing_high_low(h1, 20),
             "M15": swing_high_low(m15, 20),
         },
+
+        "prior_session": prior_sess,
+        "prior_week": prior_week,
+        "fibonacci": fib,
+        "key_level_distances": key_levels,
+        "confluence_zones": confluence_zones,
     }
     print(json.dumps(report, indent=2))
 
