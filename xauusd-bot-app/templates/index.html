@@ -607,7 +607,7 @@
     const confMatch = desc.match(/Confidence:\s*([A-Za-z]+)/i);
     const confidence = confMatch ? confMatch[1] : null;
 
-    const priceLine = desc.match(/Price:\s*([\d,.]+)\s*\|\s*vs SMA50:\s*(above|below)\s*by\s*([\d,.]+)\s*\|\s*vs SMA100:\s*(above|below)\s*by\s*([\d,.]+)/i);
+    const priceLine = desc.match(/Price:\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*vs SMA50:\s*(above|below)\s*by\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*vs SMA100:\s*(above|below)\s*by\s*\$?([\d,]+(?:\.\d+)?)/i);
     let price = null, sma50 = null, dir50 = null, delta50 = null, sma100 = null, dir100 = null, delta100 = null;
     if (priceLine) {
       price = parseFloat(priceLine[1].replace(/,/g, ''));
@@ -622,7 +622,7 @@
     const alignMatch = desc.match(/Timeframe alignment:\s*(.+)/i);
     const alignment = alignMatch ? alignMatch[1].trim() : null;
 
-    const liqMatch = desc.match(/Liquidity zones:\s*PDL\s*([\d,.]+)\s*\|\s*PDH\s*([\d,.]+)\s*\|\s*PSL\s*([\d,.]+)\s*\|\s*PSH\s*([\d,.]+)\s*\|\s*PWL\s*([\d,.]+)\s*\|\s*PWH\s*([\d,.]+)/i);
+    const liqMatch = desc.match(/Liquidity zones:\s*PDL\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*PDH\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*PSL\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*PSH\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*PWL\s*\$?([\d,]+(?:\.\d+)?)\s*\|\s*PWH\s*\$?([\d,]+(?:\.\d+)?)/i);
     let liquidity = null;
     if (liqMatch) {
       liquidity = {
