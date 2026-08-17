@@ -7,9 +7,13 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
-      - key: ROUTINE_FIRE_URL
+      - key: ROUTINE_V1_FIRE_URL
         sync: false
-      - key: ROUTINE_BEARER_TOKEN
+      - key: ROUTINE_V1_BEARER_TOKEN
+        sync: false
+      - key: ROUTINE_V2_FIRE_URL
+        sync: false
+      - key: ROUTINE_V2_BEARER_TOKEN
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false

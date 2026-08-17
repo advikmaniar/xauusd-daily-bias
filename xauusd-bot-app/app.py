@@ -27,8 +27,20 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 
 # ---- Config (all from environment variables — never hardcode secrets) ----
-ROUTINE_FIRE_URL = os.environ["ROUTINE_FIRE_URL"]          # e.g. https://api.anthropic.com/v1/claude_code/routines/trig_XXXX/fire
-ROUTINE_BEARER_TOKEN = os.environ["ROUTINE_BEARER_TOKEN"]  # generated once from the routine's API trigger modal
+# Two separate routines: V1 runs oanda_xauusd_report.py (original engine),
+# V2 runs oanda_xauusd_report_v2.py (liquidity/fib confluence engine). Each
+# is its own Claude Code routine with its own API trigger token — generated
+# from that routine's "Add another trigger -> API -> Generate token".
+ROUTINES = {
+    "v1": {
+        "fire_url": os.environ.get("ROUTINE_V1_FIRE_URL"),
+        "bearer_token": os.environ.get("ROUTINE_V1_BEARER_TOKEN"),
+    },
+    "v2": {
+        "fire_url": os.environ.get("ROUTINE_V2_FIRE_URL"),
+        "bearer_token": os.environ.get("ROUTINE_V2_BEARER_TOKEN"),
+    },
+}
 
 GOOGLE_CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
@@ -40,7 +52,7 @@ MOCK_MODE = os.environ.get("MOCK_MODE", "0") in ("1", "true", "True")
 
 # In-memory run tracker (fine for a single-user local app; swap for a real
 # store if you ever deploy this beyond your own machine)
-LAST_RUN = {"fired_at": None, "session_url": None}
+LAST_RUN = {"fired_at": None, "session_url": None, "version": None}
 
 
 def get_calendar_service():
@@ -62,11 +74,17 @@ def index():
 
 @app.route("/api/start", methods=["POST"])
 def start_bot():
+    body = request.get_json(silent=True) or {}
+    version = body.get("version", "v1")
+    if version not in ROUTINES:
+        return jsonify({"status": "error", "detail": f"Unknown routine version '{version}'."}), 400
+
     fired_at = datetime.now(timezone.utc)
 
     # Mock mode: simulate firing and immediately create an in-memory calendar event
     if MOCK_MODE:
         LAST_RUN["fired_at"] = fired_at.isoformat()
+        LAST_RUN["version"] = version
         LAST_RUN["session_url"] = "https://mock.session.local/session/123"
         # store a mock event created at fired_at
         LAST_RUN["mock_event"] = {
@@ -111,12 +129,21 @@ def start_bot():
             "status": "started",
             "fired_at": LAST_RUN["fired_at"],
             "session_url": LAST_RUN["session_url"],
+            "version": version,
         })
+
+    routine = ROUTINES[version]
+    if not routine["fire_url"] or not routine["bearer_token"]:
+        return jsonify({
+            "status": "error",
+            "detail": f"Routine '{version}' isn't configured — missing ROUTINE_{version.upper()}_FIRE_URL / _BEARER_TOKEN.",
+        }), 500
+
     try:
         resp = requests.post(
-            ROUTINE_FIRE_URL,
+            routine["fire_url"],
             headers={
-                "Authorization": f"Bearer {ROUTINE_BEARER_TOKEN}",
+                "Authorization": f"Bearer {routine['bearer_token']}",
                 "anthropic-beta": "experimental-cc-routine-2026-04-01",
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
@@ -132,12 +159,14 @@ def start_bot():
 
     data = resp.json()
     LAST_RUN["fired_at"] = fired_at.isoformat()
+    LAST_RUN["version"] = version
     LAST_RUN["session_url"] = data.get("claude_code_session_url")
 
     return jsonify({
         "status": "started",
         "fired_at": LAST_RUN["fired_at"],
         "session_url": LAST_RUN["session_url"],
+        "version": version,
     })
 
 
@@ -155,6 +184,7 @@ def status():
             "description": ev.get("description"),
             "start": ev.get("start"),
             "session_url": LAST_RUN.get("session_url"),
+            "version": LAST_RUN.get("version"),
         })
 
     service = get_calendar_service()
@@ -184,6 +214,7 @@ def status():
                 "description": ev.get("description"),
                 "start": ev.get("start"),
                 "session_url": LAST_RUN["session_url"],
+                "version": LAST_RUN.get("version"),
             })
 
     # Still waiting on the routine to finish and create the event
@@ -194,6 +225,7 @@ def status():
         "status": "timeout" if timed_out else "pending",
         "elapsed_seconds": int(elapsed),
         "session_url": LAST_RUN["session_url"],
+        "version": LAST_RUN.get("version"),
     })
 
 

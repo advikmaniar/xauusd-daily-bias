@@ -62,10 +62,13 @@
   .topbar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 10px;
     padding: 18px 24px 14px;
     flex-shrink: 0;
   }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
 
   .mark { width: 26px; height: 26px; flex-shrink: 0; }
 
@@ -85,6 +88,34 @@
     text-transform: uppercase;
     color: var(--ink-2);
   }
+
+  .version-toggle {
+    display: flex;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 100px;
+    padding: 3px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .version-btn {
+    border: none;
+    background: transparent;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 5px 12px;
+    border-radius: 100px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .version-btn.active { background: var(--gold-dim); color: var(--gold); }
+  .version-btn:disabled { cursor: default; opacity: 0.6; }
 
   .screens {
     position: relative;
@@ -413,13 +444,19 @@
 
 <div class="app-shell">
   <div class="topbar">
-    <svg class="mark" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="9.5" stroke="#cda149" stroke-width="1.4"/>
-      <path d="M12 6.2 L12 12 L16 14.4" stroke="#cda149" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <div class="wordmark">
-      <span class="ticker">XAUUSD</span>
-      <span class="sub">Daily Bias</span>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9.5" stroke="#cda149" stroke-width="1.4"/>
+        <path d="M12 6.2 L12 12 L16 14.4" stroke="#cda149" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="wordmark">
+        <span class="ticker">XAUUSD</span>
+        <span class="sub">Daily Bias</span>
+      </div>
+    </div>
+    <div class="version-toggle" id="versionToggle" role="group" aria-label="Routine version">
+      <button type="button" class="version-btn" data-version="v1" id="btnV1">V1</button>
+      <button type="button" class="version-btn" data-version="v2" id="btnV2">V2</button>
     </div>
   </div>
 
@@ -514,6 +551,24 @@
 
 <script>
 (function () {
+  const versionBtns = document.querySelectorAll('.version-btn');
+  let selectedVersion = localStorage.getItem('xauusd_version') || 'v1';
+  if (selectedVersion !== 'v1' && selectedVersion !== 'v2') selectedVersion = 'v1';
+
+  function applyVersionUI() {
+    versionBtns.forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.version === selectedVersion);
+    });
+  }
+  versionBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      selectedVersion = btn.dataset.version;
+      localStorage.setItem('xauusd_version', selectedVersion);
+      applyVersionUI();
+    });
+  });
+  applyVersionUI();
+
   const startBtn = document.getElementById('startBtn');
   const btnIcon = document.getElementById('btnIcon');
   const btnLabel = document.getElementById('btnLabel');
@@ -681,6 +736,7 @@
 
   function setPending(isPending) {
     startBtn.disabled = isPending;
+    versionBtns.forEach(function (btn) { btn.disabled = isPending; });
     gaugeWrap.classList.toggle('pending', isPending);
     btnIcon.style.display = isPending ? 'none' : '';
     btnLabel.textContent = isPending ? '' : 'Start';
@@ -722,7 +778,11 @@
 
     let res;
     try {
-      res = await fetch('/api/start', { method: 'POST' });
+      res = await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: selectedVersion })
+      });
     } catch (e) {
       setStatus('Failed to start — ' + e.message, true);
       setPending(false);
