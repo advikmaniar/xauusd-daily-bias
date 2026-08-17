@@ -189,7 +189,7 @@ def session_range(candles, start_h, end_h):
     return {"high": round(max(c["high"] for c in rows), 2), "low": round(min(c["low"] for c in rows), 2)}
 
 
-SESSIONS = [("Asian", 0, 8), ("London", 8, 13), ("NY", 13, 21)]
+SESSIONS = [("Asian", 0, 9), ("London", 7, 16), ("NY", 12, 21)]
 
 
 def session_range_for_date(candles, date, start_h, end_h):
@@ -379,7 +379,7 @@ def main():
     extreme = recent_extreme(h1, 72)
     reversal = detect_reversal(structural_alignment, intraday_alignment, extreme)
 
-    prior_day = {"high": d1[-2]["high"], "low": d1[-2]["low"], "close": d1[-2]["close"]} if len(d1) >= 2 else None
+    prior_day = {"high": d1[-1]["high"], "low": d1[-1]["low"], "close": d1[-1]["close"]} if len(d1) >= 1 else None
     prior_sess = previous_session(h1)
     prior_week = previous_week_range(d1)
     fib = fib_retracement(extreme)

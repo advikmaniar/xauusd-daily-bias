@@ -95,7 +95,7 @@ def start_bot():
                 "Price: 4368.80 | vs SMA50: above by 220.3 | vs SMA100: below by 20.4\n"
                 "Timeframe alignment: intraday fully_aligned_bearish (H1/M15/M5) vs "
                 "structural fully_aligned_bullish (D1/H4) — reversal_against_structure=true\n"
-                "Liquidity zones: PDL 4360.00 | PDH 4429.09 | PSL 4396.20 | PSH 4432.00 | "
+                "Liquidity zones: PDL 4365.00 | PDH 4429.09 | PSL 4396.20 | PSH 4432.00 | "
                 "PWL 4353.00 | PWH 4429.09\n\n"
                 "Key pointers (max 4, only if genuinely impactful):\n"
                 "- Reversal against structure: D1/H4 remain bullish (RSI 67.9/51.4) but "

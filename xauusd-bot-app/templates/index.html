@@ -362,6 +362,8 @@
   .liq-half.align-end { justify-content: flex-end; }
   .liq-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--ink-2); }
   .liq-value { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--paper); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .liq-value.near { color: var(--gold); font-weight: 700; }
+  .liq-value.near::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); margin-left: 6px; vertical-align: middle; }
 
   .ticket-keypoints { padding: 18px 22px 22px; border-top: 1px solid var(--hairline); }
   .ticket-keypoints[hidden] { display: none; }
@@ -662,6 +664,17 @@
     return (dir === 'above' ? 'Above by ' : 'Below by ') + fmt(delta);
   }
 
+  const LIQUIDITY_NEAR_THRESHOLD_PCT = 0.15;
+
+  function setLiquidityValue(el, levelPrice, currentPrice) {
+    el.textContent = fmt(levelPrice);
+    let isNear = false;
+    if (levelPrice != null && currentPrice != null) {
+      isNear = Math.abs(currentPrice - levelPrice) / currentPrice * 100 <= LIQUIDITY_NEAR_THRESHOLD_PCT;
+    }
+    el.classList.toggle('near', isNear);
+  }
+
   function renderTicket(bias, confidence, desc, fallbackTitle) {
     const r = parseReport(desc);
     const finalBias = bias || r.bias;
@@ -702,12 +715,12 @@
 
     rowLiquidity.hidden = !r.liquidity;
     if (r.liquidity) {
-      valPdl.textContent = fmt(r.liquidity.pdl);
-      valPdh.textContent = fmt(r.liquidity.pdh);
-      valPsl.textContent = fmt(r.liquidity.psl);
-      valPsh.textContent = fmt(r.liquidity.psh);
-      valPwl.textContent = fmt(r.liquidity.pwl);
-      valPwh.textContent = fmt(r.liquidity.pwh);
+      setLiquidityValue(valPdl, r.liquidity.pdl, r.price);
+      setLiquidityValue(valPdh, r.liquidity.pdh, r.price);
+      setLiquidityValue(valPsl, r.liquidity.psl, r.price);
+      setLiquidityValue(valPsh, r.liquidity.psh, r.price);
+      setLiquidityValue(valPwl, r.liquidity.pwl, r.price);
+      setLiquidityValue(valPwh, r.liquidity.pwh, r.price);
     }
 
     const hasKeyContent = r.summary || r.points.length;

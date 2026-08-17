@@ -244,8 +244,8 @@ def main():
         "day_of_week": datetime.now(timezone.utc).strftime("%A"),
         "live_price": live,
         "prior_day": {
-            "high": d1[-2]["high"], "low": d1[-2]["low"], "close": d1[-2]["close"],
-        } if len(d1) >= 2 else None,
+            "high": d1[-1]["high"], "low": d1[-1]["low"], "close": d1[-1]["close"],
+        } if len(d1) >= 1 else None,
         "sma_50_d1": sma(d1, 50),
         "sma_100_d1": sma(d1, 100),
         "atr_14_d1": atr(d1, 14),
