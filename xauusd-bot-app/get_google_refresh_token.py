@@ -5,7 +5,7 @@ then prints the refresh token to save into your .env file.
 
 Setup before running:
   1. Go to console.cloud.google.com -> create a project (or use an existing one)
-  2. Enable the "Google Calendar API" for that project
+  2. Enable the "Google Calendar API" and "Google Sheets API" for that project
   3. Go to APIs & Services -> Credentials -> Create Credentials -> OAuth client ID
      - Application type: Desktop app
   4. Download the credentials JSON, save it as client_secret.json in this folder
@@ -15,7 +15,10 @@ Setup before running:
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",
+]
 
 flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
 creds = flow.run_local_server(port=0)

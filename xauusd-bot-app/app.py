@@ -7,6 +7,8 @@ Flow:
   3. Browser polls GET /api/status every few seconds
   4. Backend checks Google Calendar for a new "XAUUSD Bias" event created
      after the fire time, and returns it once found
+  5. On first "done" response, the call is logged (once) to the "Gold Bias
+     Log" Google Sheet for later accuracy grading — see GOOGLE_SHEET_ID
 
 Run:
   pip install flask requests google-auth google-auth-oauthlib --break-system-packages
@@ -15,6 +17,7 @@ Run:
 """
 
 import os
+import re
 import time
 import requests
 from datetime import datetime, timezone
@@ -46,16 +49,17 @@ GOOGLE_CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
 GOOGLE_REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
 CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID")  # "Gold Bias Log" — accuracy tracker
 
 # Local dev/test helpers
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") in ("1", "true", "True")
 
 # In-memory run tracker (fine for a single-user local app; swap for a real
 # store if you ever deploy this beyond your own machine)
-LAST_RUN = {"fired_at": None, "session_url": None, "version": None}
+LAST_RUN = {"fired_at": None, "session_url": None, "version": None, "logged": False}
 
 
-def get_calendar_service():
+def _google_creds():
     creds = Credentials(
         None,
         refresh_token=GOOGLE_REFRESH_TOKEN,
@@ -64,7 +68,57 @@ def get_calendar_service():
         token_uri="https://oauth2.googleapis.com/token",
     )
     creds.refresh(GoogleAuthRequest())
-    return build("calendar", "v3", credentials=creds)
+    return creds
+
+
+def get_calendar_service():
+    return build("calendar", "v3", credentials=_google_creds())
+
+
+def get_sheets_service():
+    return build("sheets", "v4", credentials=_google_creds())
+
+
+def parse_report_summary(description):
+    description = description or ""
+    bias_m = re.search(r"BIAS:\s*(BUY|SELL|NONE)", description, re.I)
+    conf_m = re.search(r"Confidence:\s*([A-Za-z]+)", description, re.I)
+    price_m = re.search(r"Price:\s*\$?([\d,]+(?:\.\d+)?)", description, re.I)
+    inval_m = re.search(r"Invalidation:\s*(.+)", description, re.I)
+    return {
+        "bias": bias_m.group(1).upper() if bias_m else None,
+        "confidence": conf_m.group(1) if conf_m else None,
+        "price": float(price_m.group(1).replace(",", "")) if price_m else None,
+        "invalidation": inval_m.group(1).strip() if inval_m else None,
+    }
+
+
+def log_bias_call(version, description, session_url):
+    """Append a row to the Gold Bias Log sheet. Best-effort — a logging
+    failure shouldn't break the actual status response the UI depends on."""
+    if not GOOGLE_SHEET_ID:
+        return
+    try:
+        summary = parse_report_summary(description)
+        row = [[
+            datetime.now(timezone.utc).isoformat(),
+            version,
+            summary["bias"] or "",
+            summary["confidence"] or "",
+            summary["price"] if summary["price"] is not None else "",
+            summary["invalidation"] or "",
+            session_url or "",
+            "",  # Result — filled in later by the grading routine
+        ]]
+        get_sheets_service().spreadsheets().values().append(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            range="Sheet1!A1",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": row},
+        ).execute()
+    except Exception as e:
+        print(f"[log_bias_call] failed to log to sheet: {e}")
 
 
 @app.route("/")
@@ -85,6 +139,7 @@ def start_bot():
     if MOCK_MODE:
         LAST_RUN["fired_at"] = fired_at.isoformat()
         LAST_RUN["version"] = version
+        LAST_RUN["logged"] = False
         LAST_RUN["session_url"] = "https://mock.session.local/session/123"
         # store a mock event created at fired_at
         LAST_RUN["mock_event"] = {
@@ -160,6 +215,7 @@ def start_bot():
     data = resp.json()
     LAST_RUN["fired_at"] = fired_at.isoformat()
     LAST_RUN["version"] = version
+    LAST_RUN["logged"] = False
     LAST_RUN["session_url"] = data.get("claude_code_session_url")
 
     return jsonify({
@@ -208,6 +264,9 @@ def status():
             continue
         created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
         if created_dt >= fired_at_dt:
+            if not LAST_RUN.get("logged"):
+                log_bias_call(LAST_RUN.get("version"), ev.get("description"), LAST_RUN.get("session_url"))
+                LAST_RUN["logged"] = True
             return jsonify({
                 "status": "done",
                 "title": ev.get("summary"),
