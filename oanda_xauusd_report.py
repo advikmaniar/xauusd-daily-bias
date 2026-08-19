@@ -76,17 +76,24 @@ def atr(candles, period=14):
 
 
 def rsi(candles, period=14):
-    """Standard RSI — gives a real momentum read instead of just SMA
-    distance, so overbought/turning-down conditions are caught earlier."""
+    """Wilder's RSI — the standard formula most platforms (including
+    TradingView's default) use. Average gain/loss is recursively smoothed
+    over the whole available history, not a flat average of the last
+    `period` changes, so it carries a fading memory of moves older than
+    `period` candles instead of dropping them off a cliff."""
     if len(candles) < period + 1:
         return None
-    gains, losses = [], []
-    for i in range(1, len(candles)):
-        change = candles[i]["close"] - candles[i - 1]["close"]
-        gains.append(max(change, 0))
-        losses.append(max(-change, 0))
-    gains, losses = gains[-period:], losses[-period:]
-    avg_gain, avg_loss = sum(gains) / period, sum(losses) / period
+    changes = [candles[i]["close"] - candles[i - 1]["close"] for i in range(1, len(candles))]
+    gains = [max(c, 0) for c in changes]
+    losses = [max(-c, 0) for c in changes]
+
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    for i in range(period, len(changes)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
