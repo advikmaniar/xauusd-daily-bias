@@ -243,17 +243,20 @@ def status():
             "version": LAST_RUN.get("version"),
         })
 
-    service = get_calendar_service()
+    try:
+        service = get_calendar_service()
 
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
-    events_result = service.events().list(
-        calendarId=CALENDAR_ID,
-        timeMin=today_start.isoformat(),
-        q="XAUUSD Bias",
-        singleEvents=True,
-        orderBy="startTime",
-    ).execute()
+        events_result = service.events().list(
+            calendarId=CALENDAR_ID,
+            timeMin=today_start.isoformat(),
+            q="XAUUSD Bias",
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "detail": f"Calendar check failed: {e}"}), 502
 
     events = events_result.get("items", [])
     fired_at_dt = datetime.fromisoformat(LAST_RUN["fired_at"])

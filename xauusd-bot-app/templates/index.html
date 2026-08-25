@@ -820,8 +820,15 @@
   }
 
   async function pollStatus() {
-    const res = await fetch('/api/status');
-    const data = await res.json();
+    let res, data;
+    try {
+      res = await fetch('/api/status');
+      data = await res.json();
+    } catch (e) {
+      setPending(false);
+      setStatus('Lost connection while checking status — ' + e.message, true);
+      return;
+    }
 
     if (data.status === 'pending') {
       setStatus('Routine running… (' + data.elapsed_seconds + 's)', false);
@@ -860,6 +867,8 @@
       }
 
       goToResult();
+    } else if (data.status === 'error') {
+      setStatus('Status check failed — ' + (data.detail || 'unknown error'), true);
     } else {
       setStatus('Unexpected status: ' + data.status, true);
     }
