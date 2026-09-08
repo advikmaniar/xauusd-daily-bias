@@ -126,6 +126,44 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/privacy")
+def privacy():
+    return """
+    <!doctype html>
+    <html><head><meta charset="utf-8"><title>Privacy Policy — Gold Bias Bot</title>
+    <style>
+      body { max-width: 640px; margin: 48px auto; padding: 0 20px;
+             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+             background: #08090b; color: #eceef2; line-height: 1.6; }
+      h1 { font-size: 20px; } h2 { font-size: 15px; margin-top: 28px; }
+      a { color: #cda149; }
+    </style></head>
+    <body>
+      <h1>Privacy Policy</h1>
+      <p>Gold Bias Bot is a personal, single-user dashboard. It is not a
+      public product — it exists to let its one developer/user trigger and
+      view the result of their own trading-analysis routine.</p>
+
+      <h2>What it accesses</h2>
+      <p><strong>Google Calendar</strong> (read-only): checks your primary
+      calendar for events it created, to display the result once the
+      routine finishes. It does not read, modify, or share any other
+      calendar data.</p>
+      <p><strong>Google Sheets</strong>: appends rows to one spreadsheet
+      you own, to log each run for your own accuracy tracking. It does not
+      access any other spreadsheet.</p>
+
+      <h2>What it does not do</h2>
+      <p>It does not share, sell, or transmit your data to any third
+      party. It does not use your data for advertising. No data is
+      accessed on anyone's behalf but the app's own single user.</p>
+
+      <h2>Contact</h2>
+      <p>Questions: <a href="mailto:advik.maniar@gmail.com">advik.maniar@gmail.com</a></p>
+    </body></html>
+    """
+
+
 @app.route("/api/start", methods=["POST"])
 def start_bot():
     body = request.get_json(silent=True) or {}
