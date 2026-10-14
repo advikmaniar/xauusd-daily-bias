@@ -17,7 +17,11 @@ FOMC, ...) to get everything needed to plan a trade on the print:
     signal.
   - How gold reacted to the same event on past release dates (first
     15 minutes, first 2 hours, by the NY close) and how often the first
-    spike faded.
+    spike faded — split by whether the print was hot / in line / soft vs
+    consensus and whether that surprise pushed gold with or against its
+    trend at the time, with a confidence label on every rate. (A "faded
+    3/3" pattern from mixed surprises failed on the 2026-10-14 CPI, when a
+    hot core print in a downtrend just kept trending.)
   - Merged key levels (above / below) ranked by how many independent
     sources agree, an expected-move estimate, a technical/positioning bias
     score, and hot/soft scenario targets with invalidation.
@@ -29,19 +33,24 @@ script adds it — see ROUTINE PROMPT below.
 Usage:
   python oanda_news_event_prep.py --event CPI --date 2026-10-14
   python oanda_news_event_prep.py --event NFP --date 2026-11-06 \\
-      --past 2026-10-02,2026-09-04,2026-08-07 --hot-direction down
+      --past 2026-10-02:hot,2026-09-04:soft,2026-08-07:inline
   python oanda_news_event_prep.py --event CPI --date 2026-10-14 --json
 
   --et-time       release time in New York time (default 08:30). Converted
                   per date, so past reactions stay right across DST.
-  --past          comma-separated past release dates (YYYY-MM-DD). If
-                  omitted, uses KNOWN_EVENT_DATES for the event.
+  --past          comma-separated past release dates, each optionally
+                  tagged with how the print compared with consensus:
+                  YYYY-MM-DD[:hot|inline|soft]. If omitted, uses
+                  KNOWN_EVENT_DATES for the event. The --date itself is
+                  always skipped, so the history never includes the print
+                  being prepared for.
   --hot-direction which way gold is expected to move on a hotter-than-
                   expected (hawkish) print. "down" for CPI/NFP/PCE (default).
 
 ROUTINE PROMPT (paste into the "Gold News Prep" routine):
   1. Run: python oanda_news_event_prep.py --event <EVENT> --date <DATE> --json
-     (look up the last 3 release dates of the event and pass them with
+     (look up the past release dates of the event, and whether each
+     print came in hot / inline / soft vs consensus, and pass them with
      --past if they aren't in KNOWN_EVENT_DATES).
   2. Web-search the release: consensus and prior for headline and core
      (MoM + YoY), what drives the forecast, current Fed pricing (CME
@@ -49,7 +58,10 @@ ROUTINE PROMPT (paste into the "Gold News Prep" routine):
   3. Write a short trade-prep brief: bias, key levels, order-book walls,
      sentiment, what hot / in-line / soft prints mean for gold with
      targets and invalidation, and execution notes (spread, fade vs
-     chase based on past reactions). Cite sources.
+     chase). Only lean on a fade/hold rate when its confidence isn't
+     "low"; otherwise say the history is too thin. Cite sources.
+  4. After the release, add the date and its hot/inline/soft label to
+     KNOWN_EVENT_DATES so the history grows.
 
 Env vars required:
   OANDA_API_TOKEN
@@ -71,11 +83,22 @@ BASE_URL = z.BASE_URL
 INSTRUMENT = z.INSTRUMENT
 NY = ZoneInfo("America/New_York")
 
-# Past release dates per event, used when --past isn't given. Extend this
-# as new prints happen (dates only; the time comes from --et-time).
+# Past releases per event, used when --past isn't given: date -> how the
+# print compared with consensus ("hot" = hawkish surprise, "inline",
+# "soft", or None if unknown). For CPI the label follows core MoM. Extend
+# this after each print (the time comes from --et-time).
 KNOWN_EVENT_DATES = {
-    "CPI": ["2026-09-11", "2026-08-12", "2026-07-14"],
+    "CPI": {
+        "2026-10-14": "hot",     # core +0.3% vs +0.2%
+        "2026-09-11": "hot",     # core +0.3% vs +0.2%
+        "2026-08-12": "inline",  # core +0.2% vs +0.2%
+        "2026-07-14": "soft",    # core  0.0% vs +0.2%
+    },
 }
+SURPRISES = ("hot", "inline", "soft")
+
+# Below this many samples a fade/hold rate is anecdote, not evidence.
+CONFIDENCE_BANDS = ((10, "reasonable"), (5, "moderate"), (0, "low"))
 
 CLUSTER_BIN = 10.0          # $ width of an order-book cluster
 LEVEL_MERGE_ATR = 0.15      # levels closer than this (in D1 ATR) merge into one
@@ -244,7 +267,8 @@ def release_utc(date_str, et_time):
 
 def reaction_stats(m5, release):
     """m5: M5 candles covering the release day. Moves are $ relative to
-    the last close before the release. Returns None if data is missing."""
+    the last close before the release. Returns None if data is missing or
+    the day hasn't reached the NY close yet (a partial day isn't scored)."""
     def t(c):
         return datetime.fromisoformat(c["time"][:19]).replace(tzinfo=timezone.utc)
 
@@ -264,7 +288,7 @@ def reaction_stats(m5, release):
                 "close": round(s[-1]["close"] - pre, 1)}
 
     w15, w2h, wday = window(15), window(120), window(end=ny_close)
-    if not (w15 and w2h and wday):
+    if not (w15 and w2h and wday) or t(m5[-1]) < ny_close - timedelta(minutes=5):
         return None
     # first spike = the larger excursion in the first 15 min
     spike = w15["high"] if abs(w15["high"]) >= abs(w15["low"]) else w15["low"]
@@ -274,16 +298,81 @@ def reaction_stats(m5, release):
             "first_spike": spike, "peak_move": peak, "spike_faded_by_half": faded}
 
 
+def trend_at(d1_before):
+    """Gold's D1 trend going into a release: last close vs SMA20, using
+    only candles that closed before it."""
+    closes = [c["close"] for c in d1_before]
+    s20 = sma(closes, 20)
+    if s20 is None:
+        return None
+    return "bullish" if closes[-1] > s20 else "bearish"
+
+
+def surprise_gold_direction(surprise, hot_direction):
+    """Which way a print's surprise pushes gold: hot -> hot_direction,
+    soft -> the opposite, inline -> no push."""
+    if surprise == "hot":
+        return hot_direction
+    if surprise == "soft":
+        return "up" if hot_direction == "down" else "down"
+    return None
+
+
+def alignment(surprise, trend, hot_direction):
+    """'with_trend' if the surprise pushes gold the way it was already
+    trending, 'against_trend' if the other way, None if no push / unknown."""
+    push = surprise_gold_direction(surprise, hot_direction)
+    if push is None or trend is None:
+        return None
+    return "with_trend" if (push == "down") == (trend == "bearish") else "against_trend"
+
+
+def confidence(n):
+    for floor, label in CONFIDENCE_BANDS:
+        if n >= floor:
+            return label
+
+
+def fade_rate(rs):
+    n = len(rs)
+    faded = sum(1 for r in rs if r["spike_faded_by_half"])
+    return {"faded": faded, "samples": n, "confidence": confidence(n)}
+
+
 def summarize_reactions(reactions):
     rs = [r for r in reactions.values() if r]
     if not rs:
         return None
+    by_surprise = {k: fade_rate([r for r in rs if r.get("surprise") == k]) for k in SURPRISES}
+    by_alignment = {k: fade_rate([r for r in rs if r.get("alignment") == k])
+                    for k in ("with_trend", "against_trend")}
     return {
         "samples": len(rs),
         "avg_abs_first_spike": round(statistics.mean(abs(r["first_spike"]) for r in rs), 1),
         "avg_abs_peak_move": round(statistics.mean(abs(r["peak_move"]) for r in rs), 1),
         "faded_count": sum(1 for r in rs if r["spike_faded_by_half"]),
+        "confidence": confidence(len(rs)),
+        "by_surprise": {k: v for k, v in by_surprise.items() if v["samples"]},
+        "by_alignment": {k: v for k, v in by_alignment.items() if v["samples"]},
     }
+
+
+def fade_guide(summary, current_trend, hot_direction):
+    """For each possible print, whether it would push gold with or against
+    today's trend, and the matching historical fade rate."""
+    guide = {}
+    for surprise in ("hot", "soft"):
+        al = alignment(surprise, current_trend, hot_direction)
+        hist = (summary or {}).get("by_alignment", {}).get(al) or {"faded": 0, "samples": 0, "confidence": "low"}
+        if hist["confidence"] == "low":
+            read = "history too thin — don't assume a fade"
+        elif hist["faded"] * 2 > hist["samples"]:
+            read = "first spike has tended to fade"
+        else:
+            read = "first spike has tended to hold — don't fade it"
+        guide[surprise] = {"gold": surprise_gold_direction(surprise, hot_direction),
+                           "alignment": al, "history": hist, "read": read}
+    return guide
 
 
 # ------------------------------------------------------- key levels ----
@@ -380,7 +469,19 @@ def scenarios(price, above, below, expected_move, hot_direction):
 
 # -------------------------------------------------------------- main ----
 
-def build_report(event, date_str, et_time, past_dates, hot_direction):
+def parse_past(spec):
+    """'2026-09-11:hot,2026-08-12' -> {'2026-09-11': 'hot', '2026-08-12': None}"""
+    out = {}
+    for item in filter(None, (x.strip() for x in spec.split(","))):
+        date, _, surprise = item.partition(":")
+        if surprise and surprise not in SURPRISES:
+            raise ValueError(f"unknown surprise label {surprise!r} for {date} (use {'/'.join(SURPRISES)})")
+        out[date] = surprise or None
+    return out
+
+
+def build_report(event, date_str, et_time, past, hot_direction):
+    """past: {date: surprise label or None}."""
     live = get_pricing()
     price = live["mid"]
     release = release_utc(date_str, et_time)
@@ -413,16 +514,30 @@ def build_report(event, date_str, et_time, past_dates, hot_direction):
     imbalance = book_imbalance(bins, price, atr_value)
     pos = positioning(pb_buckets)
 
-    reactions = {}
-    for d in past_dates:
+    def iso(t):
+        return t.isoformat().replace("+00:00", "Z")
+
+    reactions, pending = {}, []
+    for d, surprise in sorted(past.items(), reverse=True):
+        if d == date_str:
+            continue  # never count the print we're preparing for
         rel = release_utc(d, et_time)
+        if rel.astimezone(NY).replace(hour=16, minute=0) > datetime.now(timezone.utc):
+            pending.append(d)  # NY close not reached yet, nothing to score
+            continue
         try:
-            m5 = z.get_candles("M5", frm=(rel - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
-                               to=(rel + timedelta(hours=9)).isoformat().replace("+00:00", "Z"))
-            reactions[d] = reaction_stats(m5, rel)
+            to = min(rel + timedelta(hours=9), datetime.now(timezone.utc) - timedelta(minutes=1))
+            m5 = z.get_candles("M5", frm=iso(rel - timedelta(hours=1)), to=iso(to))
+            stats = reaction_stats(m5, rel)
+            if stats:
+                d1_before = z.get_candles("D", frm=iso(rel - timedelta(days=45)), to=iso(rel - timedelta(hours=12)))
+                trend = trend_at(d1_before)
+                stats.update(surprise=surprise, trend=trend, alignment=alignment(surprise, trend, hot_direction))
+            reactions[d] = stats
         except requests.HTTPError:
             reactions[d] = None
     summary = summarize_reactions(reactions)
+    current_trend = "bullish" if tech["sma20"] and price > tech["sma20"] else "bearish"
 
     above, below = merge_levels(
         level_candidates(price, tech, liq, walls, zones, thin_down, thin_up, atr_value, span), atr_value, price)
@@ -441,6 +556,8 @@ def build_report(event, date_str, et_time, past_dates, hot_direction):
         "positioning": {"snapshot": pb_time, **pos},
         "past_reactions": reactions,
         "past_reaction_summary": summary,
+        "past_reactions_pending": pending,
+        "fade_guide": fade_guide(summary, current_trend, hot_direction),
         "key_levels": {"above": above[:6], "below": below[:6]},
         "bias": bias_score(price, tech, pos, imbalance),
         "scenarios": scenarios(price, above, below, expected_move, hot_direction),
@@ -485,11 +602,21 @@ def print_report(r):
         if not x:
             print(f"  {d}  no data")
             continue
-        print(f"  {d}  first spike {x['first_spike']:+.1f}  peak {x['peak_move']:+.1f}  "
+        tag = f"{x.get('surprise') or '?':6s} {(x.get('alignment') or '-').replace('_', ' '):13s}"
+        print(f"  {d}  {tag}  first spike {x['first_spike']:+.1f}  peak {x['peak_move']:+.1f}  "
               f"NY close {x['to_ny_close']['close']:+.1f}  {'faded' if x['spike_faded_by_half'] else 'held'}")
+    for d in r["past_reactions_pending"]:
+        print(f"  {d}  not scored yet (before NY close)")
     if s:
         print(f"  avg spike ±{s['avg_abs_first_spike']}  avg peak ±{s['avg_abs_peak_move']}  "
-              f"faded {s['faded_count']}/{s['samples']}")
+              f"faded {s['faded_count']}/{s['samples']} overall ({s['confidence']} confidence)")
+        for k, v in {**s["by_surprise"], **s["by_alignment"]}.items():
+            print(f"    {k.replace('_', ' '):13s} faded {v['faded']}/{v['samples']}  ({v['confidence']} confidence)")
+    print("  FADE OR CHASE?")
+    for k, g in r["fade_guide"].items():
+        h = g["history"]
+        print(f"    {k:4s} print -> gold {g['gold']:4s} ({(g['alignment'] or '?').replace('_', ' ')}): "
+              f"faded {h['faded']}/{h['samples']} — {g['read']}")
 
     sc = r["scenarios"]
     print(f"\nSCENARIOS (expected move ±{sc['expected_move']})")
@@ -504,12 +631,12 @@ def main():
     ap.add_argument("--event", default="CPI")
     ap.add_argument("--date", required=True, help="release date, YYYY-MM-DD")
     ap.add_argument("--et-time", default="08:30", help="release time in New York (HH:MM)")
-    ap.add_argument("--past", help="comma-separated past release dates")
+    ap.add_argument("--past", help="comma-separated past releases, YYYY-MM-DD[:hot|inline|soft]")
     ap.add_argument("--hot-direction", choices=("up", "down"), default="down")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    past = a.past.split(",") if a.past else KNOWN_EVENT_DATES.get(a.event.upper(), [])
+    past = parse_past(a.past) if a.past else dict(KNOWN_EVENT_DATES.get(a.event.upper(), {}))
     report = build_report(a.event.upper(), a.date, a.et_time, past, a.hot_direction)
     if a.json:
         print(json.dumps(report, indent=2))

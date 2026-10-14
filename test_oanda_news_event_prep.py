@@ -79,11 +79,49 @@ def test_reaction_stats():
           c(0, 100, 101, 60, 70),              # spike down 40
           c(5, 70, 90, 70, 90),
           c(60, 90, 130, 90, 125),             # peak +30 later
-          c(200, 125, 125, 105, 110)]          # NY close +10
+          c(200, 125, 125, 105, 112),
+          c(445, 112, 112, 108, 110)]          # last bar before 16:00 ET, NY close +10
     r = n.reaction_stats(m5, rel)
     check("first spike -40", r["first_spike"] == -40.0, r)
     check("peak picks larger excursion (-40 vs +30)", r["peak_move"] == -40.0, r)
     check("spike faded (closed on other side)", r["spike_faded_by_half"] is True, r)
+    check("day not yet at NY close -> not scored", n.reaction_stats(m5[:-1], rel) is None)
+
+
+def test_parse_past():
+    print("\n-- parse_past --")
+    p = n.parse_past("2026-09-11:hot, 2026-08-12")
+    check("labels parsed, missing label -> None", p == {"2026-09-11": "hot", "2026-08-12": None}, p)
+    try:
+        n.parse_past("2026-09-11:spicy")
+        check("bad label rejected", False)
+    except ValueError:
+        check("bad label rejected", True)
+
+
+def test_alignment():
+    print("\n-- alignment --")
+    check("hot print, gold bearish -> with trend", n.alignment("hot", "bearish", "down") == "with_trend")
+    check("soft print, gold bearish -> against trend", n.alignment("soft", "bearish", "down") == "against_trend")
+    check("hot print, gold bullish -> against trend", n.alignment("hot", "bullish", "down") == "against_trend")
+    check("inline -> no alignment", n.alignment("inline", "bearish", "down") is None)
+
+
+def test_fade_split_and_confidence():
+    print("\n-- summarize_reactions / fade_guide --")
+    def r(surprise, al, faded):
+        return {"first_spike": -40, "peak_move": -50, "spike_faded_by_half": faded,
+                "surprise": surprise, "alignment": al}
+    # 6 hot-with-trend prints, only 1 faded; 1 soft-against-trend print that faded
+    reactions = {f"d{i}": r("hot", "with_trend", i == 0) for i in range(6)}
+    reactions["s"] = r("soft", "against_trend", True)
+    s = n.summarize_reactions(reactions)
+    check("split by surprise", s["by_surprise"]["hot"] == {"faded": 1, "samples": 6, "confidence": "moderate"}, s)
+    check("split by alignment", s["by_alignment"]["against_trend"]["samples"] == 1, s)
+    g = n.fade_guide(s, "bearish", "down")
+    check("hot in downtrend -> don't fade", "don't fade" in g["hot"]["read"], g["hot"])
+    check("1 sample -> too thin", "too thin" in g["soft"]["read"], g["soft"])
+    check("confidence bands", (n.confidence(3), n.confidence(5), n.confidence(10)) == ("low", "moderate", "reasonable"))
 
 
 def test_bias_score():
@@ -99,6 +137,9 @@ if __name__ == "__main__":
     test_positioning()
     test_merge_levels_no_chaining()
     test_reaction_stats()
+    test_parse_past()
+    test_alignment()
+    test_fade_split_and_confidence()
     test_bias_score()
     print(f"\n{'ALL PASSED' if not FAILURES else f'{len(FAILURES)} FAILED: {FAILURES}'}")
     raise SystemExit(1 if FAILURES else 0)
