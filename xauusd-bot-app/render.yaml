@@ -15,6 +15,10 @@ services:
         sync: false
       - key: ROUTINE_V2_BEARER_TOKEN
         sync: false
+      - key: ROUTINE_SCALP_FIRE_URL
+        sync: false
+      - key: ROUTINE_SCALP_BEARER_TOKEN
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

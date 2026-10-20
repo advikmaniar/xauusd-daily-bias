@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08090b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="XAUUSD Scalp">
+<title>XAUUSD Scalping</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="topbar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9.5" stroke="#cda149" stroke-width="1.4"/>
+        <path d="M12 6.2 L12 12 L16 14.4" stroke="#cda149" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="wordmark">
+        <span class="ticker">XAUUSD</span>
+        <span class="sub">Scalping</span>
+      </div>
+    </div>
+    <span class="auto-chip" id="autoChip" title="Routine runs every 15 min, 07:00–20:00 UTC Mon–Fri">
+      <span class="dot"></span><span id="autoText">Auto · 15m</span>
+    </span>
+  </div>
+
+  <nav class="screen-tabs" aria-label="Screens">
+    <a href="/" class="screen-tab">Daily Bias</a>
+    <a href="/scalping" class="screen-tab active" aria-current="page">Scalping</a>
+  </nav>
+
+  <main class="scalp-page">
+    <div class="ticket">
+      <div class="scalp-head" id="scalpHead" hidden>
+        <div class="scalp-head-row">
+          <span class="bias-pill none" id="biasPill">—</span>
+          <span class="scalp-price" id="scalpPrice"></span>
+        </div>
+        <p class="scalp-bias-note" id="biasNote"></p>
+        <div class="scalp-meta">
+          <span id="updatedText"></span>
+          <span class="stale-chip" id="staleChip" hidden>Stale</span>
+        </div>
+      </div>
+
+      <div class="empty-state" id="emptyState">Loading latest scalp read…</div>
+
+      <section class="scalp-section" id="secHappened" hidden>
+        <span class="section-label">What happened</span>
+        <ol class="key-list" id="happenedList"></ol>
+      </section>
+
+      <section class="scalp-section" id="secLevels" hidden>
+        <span class="section-label">Scalping levels</span>
+        <div class="ladder" id="ladder"></div>
+      </section>
+
+      <section class="scalp-section" id="secSetups" hidden>
+        <span class="section-label">Scalping setups</span>
+        <div class="setup-list" id="setupList"></div>
+      </section>
+
+      <section class="scalp-section" id="secNotes" hidden>
+        <span class="section-label">Notes</span>
+        <ol class="key-list" id="notesList"></ol>
+      </section>
+
+      <pre class="raw-fallback" id="rawFallback" hidden></pre>
+    </div>
+
+    <div class="scalp-actions">
+      <button type="button" class="refresh-btn" id="refreshBtn">
+        <span class="spin"></span><span id="refreshLabel">Refresh now</span>
+      </button>
+      <div class="status-row" id="statusRow" style="display:none;">
+        <span class="dot"></span>
+        <span id="statusText"></span>
+      </div>
+      <a class="session-row" id="sessionLink" href="#" target="_blank" rel="noopener" hidden>
+        <span>View routine session</span>
+        <span class="chev">→</span>
+      </a>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  const STALE_MINUTES = 20;      // routine runs every 15 min — flag anything older
+  const POLL_MS = 60000;         // background refresh of the latest event
+  const PENDING_POLL_MS = 5000;  // while a manual "Refresh now" run is in flight
+
+  const autoChip = document.getElementById('autoChip');
+  const autoText = document.getElementById('autoText');
+  const scalpHead = document.getElementById('scalpHead');
+  const biasPill = document.getElementById('biasPill');
+  const scalpPrice = document.getElementById('scalpPrice');
+  const biasNote = document.getElementById('biasNote');
+  const updatedText = document.getElementById('updatedText');
+  const staleChip = document.getElementById('staleChip');
+  const emptyState = document.getElementById('emptyState');
+  const secHappened = document.getElementById('secHappened'), happenedList = document.getElementById('happenedList');
+  const secLevels = document.getElementById('secLevels'), ladder = document.getElementById('ladder');
+  const secSetups = document.getElementById('secSetups'), setupList = document.getElementById('setupList');
+  const secNotes = document.getElementById('secNotes'), notesList = document.getElementById('notesList');
+  const rawFallback = document.getElementById('rawFallback');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const refreshLabel = document.getElementById('refreshLabel');
+  const statusRow = document.getElementById('statusRow');
+  const statusText = document.getElementById('statusText');
+  const sessionLink = document.getElementById('sessionLink');
+
+  let updatedAt = null;
+  let pollTimer = null;
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function fmt(n) {
+    return n == null ? '' : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Schedule window: 07:00–20:00 UTC, Mon–Fri
+  function inSchedule(d) {
+    const day = d.getUTCDay(), h = d.getUTCHours();
+    return day >= 1 && day <= 5 && h >= 7 && h < 20;
+  }
+
+  function renderAutoChip() {
+    const live = inSchedule(new Date());
+    autoChip.classList.toggle('live', live);
+    autoText.textContent = live ? 'Auto · 15m' : 'Auto · paused';
+  }
+
+  function renderUpdated() {
+    if (!updatedAt) { updatedText.textContent = ''; staleChip.hidden = true; return; }
+    const hhmm = updatedAt.toISOString().slice(11, 16);
+    const mins = Math.max(0, Math.round((Date.now() - updatedAt.getTime()) / 60000));
+    const ago = mins < 1 ? 'just now' : mins < 60 ? mins + 'm ago' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm ago';
+    updatedText.textContent = 'Updated ' + hhmm + ' UTC · ' + ago;
+    staleChip.hidden = mins <= STALE_MINUTES;
+  }
+
+  function fillList(list, items) {
+    list.innerHTML = '';
+    items.forEach(function (p, i) {
+      const li = el('li');
+      li.appendChild(el('span', 'key-index', String(i + 1)));
+      li.appendChild(el('span', null, p));
+      list.appendChild(li);
+    });
+  }
+
+  function renderLadder(levels, price) {
+    ladder.innerHTML = '';
+    let markerDone = price == null;
+    levels.forEach(function (l) {
+      // Current price sits between the last level above it and the first below
+      if (!markerDone && l.high < price) {
+        ladder.appendChild(el('div', 'price-marker', fmt(price)));
+        markerDone = true;
+      }
+      const row = el('div', 'ladder-row' + (l.best ? ' best' : ''));
+      row.appendChild(el('span', 'side-tag ' + l.side.toLowerCase(), l.side));
+      const zone = el('span', 'ladder-zone', l.zone);
+      row.appendChild(zone);
+      const note = el('span', 'ladder-note', l.note);
+      if (l.best) note.appendChild(el('span', 'best-tag', 'BEST'));
+      row.appendChild(note);
+      ladder.appendChild(row);
+    });
+    if (!markerDone) ladder.appendChild(el('div', 'price-marker', fmt(price)));
+  }
+
+  function cell(k, v, vcls) {
+    const c = el('div', 'setup-cell');
+    c.appendChild(el('span', 'k', k));
+    c.appendChild(el('span', 'v' + (vcls ? ' ' + vcls : ''), v));
+    return c;
+  }
+
+  function renderSetups(setups) {
+    setupList.innerHTML = '';
+    setups.forEach(function (s) {
+      const card = el('div', 'setup-card');
+      const top = el('div', 'setup-top');
+      top.appendChild(el('span', 'setup-rank', '#' + s.rank));
+      top.appendChild(el('span', 'dir-pill ' + s.direction.toLowerCase(), s.direction));
+      if (s.confidence) {
+        top.appendChild(el('span', 'confidence-chip ' + s.confidence.toLowerCase(), s.confidence));
+      }
+      card.appendChild(top);
+      if (s.trigger) card.appendChild(el('p', 'setup-trigger', s.trigger));
+      const grid = el('div', 'setup-grid');
+      grid.appendChild(cell('Entry', s.entry));
+      grid.appendChild(cell('Stop', s.stop, 'stop'));
+      grid.appendChild(cell('Targets', s.targets.join(' → '), 'tgt'));
+      card.appendChild(grid);
+      setupList.appendChild(card);
+    });
+  }
+
+  function showEmpty(text) {
+    scalpHead.hidden = secHappened.hidden = secLevels.hidden = secSetups.hidden = secNotes.hidden = true;
+    rawFallback.hidden = true;
+    emptyState.hidden = false;
+    emptyState.textContent = text;
+  }
+
+  function render(data) {
+    const r = data.report;
+    updatedAt = r.updated ? new Date(r.updated) : (data.updated ? new Date(data.updated) : null);
+    if (updatedAt && isNaN(updatedAt)) updatedAt = null;
+
+    emptyState.hidden = true;
+    scalpHead.hidden = false;
+    const bias = r.bias || 'NEUTRAL';
+    biasPill.className = 'bias-pill ' + ({ BULLISH: 'buy', BEARISH: 'sell' }[bias] || 'none');
+    biasPill.textContent = r.bias || 'NO READ';
+    scalpPrice.textContent = fmt(r.price);
+    biasNote.textContent = r.bias_note || '';
+    biasNote.hidden = !r.bias_note;
+    renderUpdated();
+
+    if (!data.usable) {
+      secHappened.hidden = secLevels.hidden = secSetups.hidden = secNotes.hidden = true;
+      rawFallback.hidden = false;
+      rawFallback.textContent = r.raw || '(empty event)';
+      return;
+    }
+    rawFallback.hidden = true;
+
+    secHappened.hidden = !r.happened.length;
+    fillList(happenedList, r.happened);
+    secLevels.hidden = !r.levels.length;
+    renderLadder(r.levels, r.price);
+    secSetups.hidden = !r.setups.length;
+    renderSetups(r.setups);
+    secNotes.hidden = !r.notes.length;
+    fillList(notesList, r.notes);
+  }
+
+  function setStatus(text, isError) {
+    if (!text) { statusRow.style.display = 'none'; return; }
+    statusRow.style.display = 'flex';
+    statusRow.classList.toggle('error', !!isError);
+    statusText.textContent = text;
+  }
+
+  function setRefreshing(on) {
+    refreshBtn.disabled = on;
+    refreshBtn.classList.toggle('pending', on);
+    refreshLabel.textContent = on ? 'Running analysis…' : 'Refresh now';
+  }
+
+  function schedule(ms) {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(load, ms);
+  }
+
+  async function load() {
+    let data;
+    try {
+      const res = await fetch('/api/scalp/latest');
+      data = await res.json();
+    } catch (e) {
+      setStatus('Couldn’t reach the server — ' + e.message, true);
+      schedule(POLL_MS);
+      return;
+    }
+
+    if (data.status === 'ok') render(data);
+    else if (data.status === 'empty') showEmpty('No scalp read yet. The routine posts one every 15 minutes during London + NY (07:00–20:00 UTC, Mon–Fri) — or tap Refresh now.');
+    else if (data.status === 'error') setStatus('Calendar check failed — ' + (data.detail || 'unknown error'), true);
+
+    const run = data.refresh || {};
+    if (run.session_url) {
+      sessionLink.href = run.session_url;
+      sessionLink.hidden = false;
+    }
+    if (run.pending) {
+      setRefreshing(true);
+      setStatus('Routine running… (' + run.elapsed_seconds + 's)', false);
+      schedule(PENDING_POLL_MS);
+      return;
+    }
+    setRefreshing(false);
+    if (run.timed_out) setStatus('Refresh timed out — check the routine session.', true);
+    else if (data.status !== 'error') setStatus('');
+    schedule(POLL_MS);
+  }
+
+  async function refreshNow() {
+    setRefreshing(true);
+    setStatus('Firing routine…', false);
+    let res;
+    try {
+      res = await fetch('/api/scalp/refresh', { method: 'POST' });
+    } catch (e) {
+      setRefreshing(false);
+      setStatus('Failed to start — ' + e.message, true);
+      return;
+    }
+    if (!res.ok) {
+      let detail = res.statusText || 'unknown error';
+      try { detail = (await res.json()).detail || detail; } catch (e) {}
+      setRefreshing(false);
+      setStatus('Failed to start — ' + detail, true);
+      return;
+    }
+    schedule(PENDING_POLL_MS);
+  }
+
+  refreshBtn.addEventListener('click', refreshNow);
+  renderAutoChip();
+  setInterval(function () { renderAutoChip(); renderUpdated(); }, 30000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) load();
+  });
+  load();
+})();
+</script>
+</body>
+</html>

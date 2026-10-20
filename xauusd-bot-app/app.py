@@ -10,6 +10,13 @@ Flow:
   5. On first "done" response, the call is logged (once) to the "Gold Bias
      Log" Google Sheet for later accuracy grading — see GOOGLE_SHEET_ID
 
+Scalping screen (/scalping):
+  - A scheduled routine runs every 15 min (07:00–20:00 UTC, Mon–Fri) and
+    overwrites ONE "XAUUSD Scalp" calendar event with the latest read
+  - Browser polls GET /api/scalp/latest, which parses that event
+    (scalp_report.py) into levels / setups / notes
+  - "Refresh now" -> POST /api/scalp/refresh fires the same routine on demand
+
 Run:
   pip install flask requests google-auth google-auth-oauthlib --break-system-packages
   python app.py
@@ -26,6 +33,8 @@ from flask import Flask, jsonify, render_template, request
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from googleapiclient.discovery import build
+
+from scalp_report import parse_scalp_report, is_usable, SAMPLE_REPORT
 
 app = Flask(__name__)
 
@@ -45,6 +54,14 @@ ROUTINES = {
     },
 }
 
+# Scalping routine — the same routine the 15-min schedule runs, with an API
+# trigger added so the "Refresh now" button can fire it on demand.
+SCALP_ROUTINE = {
+    "fire_url": os.environ.get("ROUTINE_SCALP_FIRE_URL"),
+    "bearer_token": os.environ.get("ROUTINE_SCALP_BEARER_TOKEN"),
+}
+SCALP_EVENT_TITLE = "XAUUSD Scalp"
+
 GOOGLE_CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
 GOOGLE_REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
@@ -57,6 +74,7 @@ MOCK_MODE = os.environ.get("MOCK_MODE", "0") in ("1", "true", "True")
 # In-memory run tracker (fine for a single-user local app; swap for a real
 # store if you ever deploy this beyond your own machine)
 LAST_RUN = {"fired_at": None, "session_url": None, "version": None, "logged": False}
+SCALP_RUN = {"fired_at": None, "session_url": None}
 
 
 def _google_creds():
@@ -124,6 +142,11 @@ def log_bias_call(version, description, session_url):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/scalping")
+def scalping():
+    return render_template("scalping.html")
 
 
 @app.route("/privacy")
@@ -327,6 +350,103 @@ def status():
         "session_url": LAST_RUN["session_url"],
         "version": LAST_RUN.get("version"),
     })
+
+
+def _ts(s):
+    return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+
+
+def _scalp_refresh_state(event_updated):
+    """Status of the last manual "Refresh now". Done once the event has been
+    rewritten after the fire time."""
+    if not SCALP_RUN["fired_at"]:
+        return {"pending": False, "session_url": None}
+    fired_at = _ts(SCALP_RUN["fired_at"])
+    elapsed = (datetime.now(timezone.utc) - fired_at).total_seconds()
+    done = event_updated is not None and event_updated >= fired_at
+    timed_out = not done and elapsed > 300
+    return {
+        "pending": not done and not timed_out,
+        "timed_out": timed_out,
+        "elapsed_seconds": int(elapsed),
+        "session_url": SCALP_RUN["session_url"],
+    }
+
+
+@app.route("/api/scalp/latest")
+def scalp_latest():
+    if MOCK_MODE:
+        report = parse_scalp_report(SAMPLE_REPORT)
+        updated = SCALP_RUN["fired_at"] or report["updated"]
+        return jsonify({
+            "status": "ok",
+            "updated": updated,
+            "report": report,
+            "usable": is_usable(report),
+            "refresh": _scalp_refresh_state(_ts(updated)),
+        })
+
+    try:
+        since = datetime.now(timezone.utc).timestamp() - 3 * 86400  # covers a weekend
+        events = get_calendar_service().events().list(
+            calendarId=CALENDAR_ID,
+            timeMin=datetime.fromtimestamp(since, timezone.utc).isoformat(),
+            q=SCALP_EVENT_TITLE,
+            singleEvents=True,
+        ).execute().get("items", [])
+    except Exception as e:
+        return jsonify({"status": "error", "detail": f"Calendar check failed: {e}"}), 502
+
+    events = [ev for ev in events if (ev.get("summary") or "").startswith(SCALP_EVENT_TITLE)]
+    if not events:
+        return jsonify({"status": "empty", "refresh": _scalp_refresh_state(None)})
+
+    ev = max(events, key=lambda e: e.get("updated") or "")
+    report = parse_scalp_report(ev.get("description"))
+    return jsonify({
+        "status": "ok",
+        "updated": ev.get("updated"),
+        "report": report,
+        "usable": is_usable(report),
+        "refresh": _scalp_refresh_state(_ts(ev.get("updated"))),
+    })
+
+
+@app.route("/api/scalp/refresh", methods=["POST"])
+def scalp_refresh():
+    fired_at = datetime.now(timezone.utc)
+    if MOCK_MODE:
+        SCALP_RUN["fired_at"] = fired_at.isoformat()
+        SCALP_RUN["session_url"] = "https://mock.session.local/session/scalp"
+        return jsonify({"status": "started", "session_url": SCALP_RUN["session_url"]})
+
+    if not SCALP_ROUTINE["fire_url"] or not SCALP_ROUTINE["bearer_token"]:
+        return jsonify({
+            "status": "error",
+            "detail": "Scalp routine isn't configured — missing ROUTINE_SCALP_FIRE_URL / _BEARER_TOKEN.",
+        }), 500
+
+    try:
+        resp = requests.post(
+            SCALP_ROUTINE["fire_url"],
+            headers={
+                "Authorization": f"Bearer {SCALP_ROUTINE['bearer_token']}",
+                "anthropic-beta": "experimental-cc-routine-2026-04-01",
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={"text": "Run the XAUUSD scalp analysis now (manual refresh)."},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException as e:
+        return jsonify({"status": "error", "detail": str(e)}), 502
+
+    if resp.status_code != 200:
+        return jsonify({"status": "error", "detail": resp.text}), 502
+
+    SCALP_RUN["fired_at"] = fired_at.isoformat()
+    SCALP_RUN["session_url"] = resp.json().get("claude_code_session_url")
+    return jsonify({"status": "started", "session_url": SCALP_RUN["session_url"]})
 
 
 if __name__ == "__main__":
