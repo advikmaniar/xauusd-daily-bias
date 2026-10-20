@@ -36,7 +36,7 @@ def test_sample():
 
 def test_caps_and_order():
     print("\n-- caps / ordering --")
-    desc = "Bias: BULLISH\nWhat happened:\n" + "".join(f"- p{i}\n" for i in range(6)) + "Setups:\n" + \
+    desc = "Direction: BULLISH\nWhat happened:\n" + "".join(f"- p{i}\n" for i in range(6)) + "Setups:\n" + \
         "".join(f"{7 - i}. LONG | low | 1 | 0 | 2 | t\n" for i in range(7))
     r = s.parse_scalp_report(desc)
     check("happened capped at 3", r["happened"] == ["p0", "p1", "p2"], r["happened"])

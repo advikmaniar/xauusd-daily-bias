@@ -12,7 +12,7 @@ fields, sections in this order:
     XAUUSD SCALP
     Updated: 2026-10-20T17:52:00Z
     Price: 4125.32
-    Bias: BEARISH | Coiling in an $11 range under the 15m EMAs
+    Direction: BEARISH | Coiling in an $11 range under the 15m EMAs
     What happened:
     - <point>
     - <point>
@@ -24,6 +24,10 @@ fields, sections in this order:
     1. SHORT | High | 4126-4128 | 4131 | 4121, 4118 | Range-top fade
     Notes:
     - <point>
+
+The word "bias" must never appear anywhere in the event: the Daily Bias
+screen finds its own event with a calendar search for "XAUUSD Bias", which
+also matches description text. That's why the line is "Direction:".
 
 Levels: side is R (resistance) or S (support), listed high to low; the
 optional last field "best" marks the strongest level on that side.
@@ -115,7 +119,7 @@ def parse_scalp_report(description):
         if low.startswith("price:"):
             out["price"] = _num(line.split(":", 1)[1])
             continue
-        if low.startswith("bias:"):
+        if low.startswith("direction:"):
             bias, _, note = line.split(":", 1)[1].partition("|")
             bias = bias.strip().upper()
             out["bias"] = bias if bias in BIASES else None
@@ -150,7 +154,7 @@ def is_usable(report):
 SAMPLE_REPORT = """XAUUSD SCALP
 Updated: 2026-10-20T17:52:00Z
 Price: 4125.32
-Bias: BEARISH | Coiling in an $11 range under the 15m EMAs
+Direction: BEARISH | Coiling in an $11 range under the 15m EMAs
 What happened:
 - S1 pivot (4121.5) dipped to 4117.4 at 17:00 and was reclaimed; price back to 4123-4125
 - Last hour compressed into a 4117.4-4128.1 range — 5m ATR down to $2.6, breakout likely later in the US afternoon
