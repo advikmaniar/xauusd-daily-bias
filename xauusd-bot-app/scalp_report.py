@@ -1,6 +1,6 @@
 """
 scalp_report.py — parse the "XAUUSD Scalp" calendar event the scalping
-routine writes every 15 minutes (07:00–20:00 UTC, Mon–Fri).
+routine writes when the Scalping screen's Start button fires it.
 
 Kept free of Flask/Google imports so it can be unit-tested on its own
 (see test_scalp_report.py) and reused by any other consumer.

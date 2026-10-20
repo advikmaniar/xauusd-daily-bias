@@ -1,8 +1,8 @@
 """
 oanda_scalp_snapshot.py — intraday scalping snapshot for gold (XAU_USD).
 
-Run by the "XAUUSD Scalp" routine every 15 minutes (07:00–20:00 UTC,
-Mon–Fri). Prints the raw material for one scalp read as JSON:
+Run by the "XAUUSD Scalp" routine, which the app's Scalping screen fires
+on demand. Prints the raw material for one scalp read as JSON:
 
   - Live bid/ask/mid/spread.
   - H1 / M15 / M5 ATR14, M15 EMA20/50 + RSI14, M5 EMA20 + RSI14.

@@ -10,12 +10,12 @@ Flow:
   5. On first "done" response, the call is logged (once) to the "Gold Bias
      Log" Google Sheet for later accuracy grading — see GOOGLE_SHEET_ID
 
-Scalping screen (/scalping):
-  - A scheduled routine runs every 15 min (07:00–20:00 UTC, Mon–Fri) and
-    overwrites ONE "XAUUSD Scalp" calendar event with the latest read
-  - Browser polls GET /api/scalp/latest, which parses that event
-    (scalp_report.py) into levels / setups / notes
-  - "Refresh now" -> POST /api/scalp/refresh fires the same routine on demand
+Scalping screen (/scalping) — same flow, on demand:
+  1. "Start" -> POST /api/scalp/refresh fires the scalp routine
+  2. The routine overwrites ONE "XAUUSD Scalp" calendar event with its read
+  3. Browser polls GET /api/scalp/latest, which parses that event
+     (scalp_report.py) and reports the run done once the event was
+     updated after the fire time
 
 Run:
   pip install flask requests google-auth google-auth-oauthlib --break-system-packages
@@ -54,13 +54,14 @@ ROUTINES = {
     },
 }
 
-# Scalping routine — the same routine the 15-min schedule runs, with an API
-# trigger added so the "Refresh now" button can fire it on demand.
+# Scalping routine ("XAUUSD Scalp"), fired from the Scalping screen's Start
+# button via its API trigger.
 SCALP_ROUTINE = {
     "fire_url": os.environ.get("ROUTINE_SCALP_FIRE_URL"),
     "bearer_token": os.environ.get("ROUTINE_SCALP_BEARER_TOKEN"),
 }
 SCALP_EVENT_TITLE = "XAUUSD Scalp"
+SCALP_TIMEOUT_SECONDS = 600  # live data + headline search + calendar write
 
 GOOGLE_CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
@@ -357,14 +358,14 @@ def _ts(s):
 
 
 def _scalp_refresh_state(event_updated):
-    """Status of the last manual "Refresh now". Done once the event has been
+    """Status of the last Start press. Done once the event has been
     rewritten after the fire time."""
     if not SCALP_RUN["fired_at"]:
         return {"pending": False, "session_url": None}
     fired_at = _ts(SCALP_RUN["fired_at"])
     elapsed = (datetime.now(timezone.utc) - fired_at).total_seconds()
     done = event_updated is not None and event_updated >= fired_at
-    timed_out = not done and elapsed > 300
+    timed_out = not done and elapsed > SCALP_TIMEOUT_SECONDS
     return {
         "pending": not done and not timed_out,
         "timed_out": timed_out,
@@ -435,7 +436,7 @@ def scalp_refresh():
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
             },
-            json={"text": "Run the XAUUSD scalp analysis now (manual refresh)."},
+            json={"text": "Run the XAUUSD scalp analysis now."},
             timeout=15,
         )
     except requests.exceptions.RequestException as e:

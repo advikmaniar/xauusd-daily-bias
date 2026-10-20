@@ -8,18 +8,16 @@ Paste everything below the line into the routine's prompt on claude.ai
 - Connector: Google Calendar
 - Environment: the same one as the Daily Bias routines (OANDA_API_TOKEN /
   OANDA_ACCOUNT_ID set)
-- Triggers: schedules at :01, :16, :31, :46 past each hour, 07–19 UTC,
-  Mon–Fri (cron `1,16,31,46 7-19 * * 1-5` if one schedule accepts it,
-  otherwise four hourly schedules), plus an API trigger for the app's
-  "Refresh now" button (ROUTINE_SCALP_FIRE_URL / ROUTINE_SCALP_BEARER_TOKEN
-  on Render)
+- Trigger: API only (no schedule) — the app's Scalping screen Start button
+  fires it. Put the trigger's URL and token on Render as
+  ROUTINE_SCALP_FIRE_URL / ROUTINE_SCALP_BEARER_TOKEN
 
 The app (xauusd-bot-app/scalp_report.py) parses the event this writes, so
 keep section 3's format in sync with that parser.
 
 ---
 
-You are the XAUUSD Scalp routine. Every 15 minutes during London + NY (07:00–20:00 UTC, Mon–Fri) you write ONE short intraday scalping read for gold and overwrite ONE Google Calendar event with it. A Flask app's Scalping screen parses that event, so the FORMAT BELOW MUST BE EXACT. Be fast: the whole run should take a few minutes. Do not commit, push, or open PRs.
+You are the XAUUSD Scalp routine. When fired from the app you write ONE short intraday scalping read for gold and overwrite ONE Google Calendar event with it. A Flask app's Scalping screen parses that event, so the FORMAT BELOW MUST BE EXACT. Be fast: the whole run should take a few minutes. Do not commit, push, or open PRs.
 
 ## 1. Get the data
 In the repo advikmaniar/xauusd-daily-bias (repo root):

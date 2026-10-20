@@ -24,9 +24,6 @@
         <span class="sub">Scalping</span>
       </div>
     </div>
-    <span class="auto-chip" id="autoChip" title="Routine runs every 15 min, 07:00–20:00 UTC Mon–Fri">
-      <span class="dot"></span><span id="autoText">Auto · 15m</span>
-    </span>
   </div>
 
   <nav class="screen-tabs" aria-label="Screens">
@@ -34,89 +31,109 @@
     <a href="/scalping" class="screen-tab active" aria-current="page">Scalping</a>
   </nav>
 
-  <main class="scalp-page">
-    <div class="ticket">
-      <div class="scalp-head" id="scalpHead" hidden>
-        <div class="scalp-head-row">
-          <span class="bias-pill none" id="biasPill">—</span>
-          <span class="scalp-price" id="scalpPrice"></span>
-        </div>
-        <p class="scalp-bias-note" id="biasNote"></p>
-        <div class="scalp-meta">
-          <span id="updatedText"></span>
-          <span class="stale-chip" id="staleChip" hidden>Stale</span>
-        </div>
+  <div class="screens">
+    <section class="screen screen--idle" id="screenIdle">
+      <div class="gauge-wrap" id="gaugeWrap">
+        <svg class="gauge-ring" viewBox="0 0 200 200">
+          <circle class="track" cx="100" cy="100" r="98"/>
+          <circle class="sweep" cx="100" cy="100" r="98"/>
+        </svg>
+        <button class="gauge-btn" id="startBtn">
+          <svg class="gauge-icon" viewBox="0 0 24 24" fill="none" id="btnIcon">
+            <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor"/>
+          </svg>
+          <span class="gauge-label" id="btnLabel">Start</span>
+          <span class="gauge-sub" id="btnSub">Run scalp</span>
+        </button>
       </div>
-
-      <div class="empty-state" id="emptyState">Loading latest scalp read…</div>
-
-      <section class="scalp-section" id="secHappened" hidden>
-        <span class="section-label">What happened</span>
-        <ol class="key-list" id="happenedList"></ol>
-      </section>
-
-      <section class="scalp-section" id="secLevels" hidden>
-        <span class="section-label">Scalping levels</span>
-        <div class="ladder" id="ladder"></div>
-      </section>
-
-      <section class="scalp-section" id="secSetups" hidden>
-        <span class="section-label">Scalping setups</span>
-        <div class="setup-list" id="setupList"></div>
-      </section>
-
-      <section class="scalp-section" id="secNotes" hidden>
-        <span class="section-label">Notes</span>
-        <ol class="key-list" id="notesList"></ol>
-      </section>
-
-      <pre class="raw-fallback" id="rawFallback" hidden></pre>
-    </div>
-
-    <div class="scalp-actions">
-      <button type="button" class="refresh-btn" id="refreshBtn">
-        <span class="spin"></span><span id="refreshLabel">Refresh now</span>
-      </button>
+      <p class="idle-hint">Pulls live price, order book and headlines, then builds the scalping levels and setups.</p>
       <div class="status-row" id="statusRow" style="display:none;">
         <span class="dot"></span>
-        <span id="statusText"></span>
+        <span id="statusText">Routine running…</span>
+      </div>
+      <button type="button" class="last-read" id="lastReadBtn" hidden>
+        <span id="lastReadText">Last read</span>
+        <span class="chev">→</span>
+      </button>
+    </section>
+
+    <section class="screen screen--result" id="screenResult">
+      <div class="ticket">
+        <div class="scalp-head" id="scalpHead">
+          <div class="scalp-head-row">
+            <span class="bias-pill none" id="biasPill">—</span>
+            <span class="scalp-price" id="scalpPrice"></span>
+          </div>
+          <p class="scalp-bias-note" id="biasNote"></p>
+          <div class="scalp-meta">
+            <span id="updatedText"></span>
+            <span class="stale-chip" id="staleChip" hidden>Stale</span>
+          </div>
+        </div>
+
+        <section class="scalp-section" id="secHappened" hidden>
+          <span class="section-label">What happened</span>
+          <ol class="key-list" id="happenedList"></ol>
+        </section>
+
+        <section class="scalp-section" id="secLevels" hidden>
+          <span class="section-label">Scalping levels</span>
+          <div class="ladder" id="ladder"></div>
+        </section>
+
+        <section class="scalp-section" id="secSetups" hidden>
+          <span class="section-label">Scalping setups</span>
+          <div class="setup-list" id="setupList"></div>
+        </section>
+
+        <section class="scalp-section" id="secNotes" hidden>
+          <span class="section-label">Notes</span>
+          <ol class="key-list" id="notesList"></ol>
+        </section>
+
+        <pre class="raw-fallback" id="rawFallback" hidden></pre>
       </div>
       <a class="session-row" id="sessionLink" href="#" target="_blank" rel="noopener" hidden>
-        <span>View routine session</span>
+        <span>View full routine session</span>
         <span class="chev">→</span>
       </a>
-    </div>
-  </main>
+      <button class="again-btn" id="againBtn">Run again</button>
+    </section>
+  </div>
 </div>
 
 <script>
 (function () {
-  const STALE_MINUTES = 20;      // routine runs every 15 min — flag anything older
-  const POLL_MS = 60000;         // background refresh of the latest event
-  const PENDING_POLL_MS = 5000;  // while a manual "Refresh now" run is in flight
+  const STALE_MINUTES = 20;  // a scalp read older than this gets a "Stale" chip
 
-  const autoChip = document.getElementById('autoChip');
-  const autoText = document.getElementById('autoText');
-  const scalpHead = document.getElementById('scalpHead');
+  const startBtn = document.getElementById('startBtn');
+  const btnIcon = document.getElementById('btnIcon');
+  const btnLabel = document.getElementById('btnLabel');
+  const btnSub = document.getElementById('btnSub');
+  const gaugeWrap = document.getElementById('gaugeWrap');
+  const statusRow = document.getElementById('statusRow');
+  const statusText = document.getElementById('statusText');
+  const lastReadBtn = document.getElementById('lastReadBtn');
+  const lastReadText = document.getElementById('lastReadText');
+
+  const screenIdle = document.getElementById('screenIdle');
+  const screenResult = document.getElementById('screenResult');
   const biasPill = document.getElementById('biasPill');
   const scalpPrice = document.getElementById('scalpPrice');
   const biasNote = document.getElementById('biasNote');
   const updatedText = document.getElementById('updatedText');
   const staleChip = document.getElementById('staleChip');
-  const emptyState = document.getElementById('emptyState');
   const secHappened = document.getElementById('secHappened'), happenedList = document.getElementById('happenedList');
   const secLevels = document.getElementById('secLevels'), ladder = document.getElementById('ladder');
   const secSetups = document.getElementById('secSetups'), setupList = document.getElementById('setupList');
   const secNotes = document.getElementById('secNotes'), notesList = document.getElementById('notesList');
   const rawFallback = document.getElementById('rawFallback');
-  const refreshBtn = document.getElementById('refreshBtn');
-  const refreshLabel = document.getElementById('refreshLabel');
-  const statusRow = document.getElementById('statusRow');
-  const statusText = document.getElementById('statusText');
   const sessionLink = document.getElementById('sessionLink');
+  const againBtn = document.getElementById('againBtn');
 
-  let updatedAt = null;
+  let lastData = null;   // most recent /api/scalp/latest response with a report
   let pollTimer = null;
+  let settleTimer = null;
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -129,25 +146,15 @@
     return n == null ? '' : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  // Schedule window: 07:00–20:00 UTC, Mon–Fri
-  function inSchedule(d) {
-    const day = d.getUTCDay(), h = d.getUTCHours();
-    return day >= 1 && day <= 5 && h >= 7 && h < 20;
+  function updatedOf(data) {
+    const d = new Date(data.report.updated || data.updated);
+    return isNaN(d) ? null : d;
   }
 
-  function renderAutoChip() {
-    const live = inSchedule(new Date());
-    autoChip.classList.toggle('live', live);
-    autoText.textContent = live ? 'Auto · 15m' : 'Auto · paused';
-  }
-
-  function renderUpdated() {
-    if (!updatedAt) { updatedText.textContent = ''; staleChip.hidden = true; return; }
-    const hhmm = updatedAt.toISOString().slice(11, 16);
-    const mins = Math.max(0, Math.round((Date.now() - updatedAt.getTime()) / 60000));
+  function ageText(d) {
+    const mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
     const ago = mins < 1 ? 'just now' : mins < 60 ? mins + 'm ago' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm ago';
-    updatedText.textContent = 'Updated ' + hhmm + ' UTC · ' + ago;
-    staleChip.hidden = mins <= STALE_MINUTES;
+    return d.toISOString().slice(11, 16) + ' UTC · ' + ago;
   }
 
   function fillList(list, items) {
@@ -171,8 +178,7 @@
       }
       const row = el('div', 'ladder-row' + (l.best ? ' best' : ''));
       row.appendChild(el('span', 'side-tag ' + l.side.toLowerCase(), l.side));
-      const zone = el('span', 'ladder-zone', l.zone);
-      row.appendChild(zone);
+      row.appendChild(el('span', 'ladder-zone', l.zone));
       const note = el('span', 'ladder-note', l.note);
       if (l.best) note.appendChild(el('span', 'best-tag', 'BEST'));
       row.appendChild(note);
@@ -209,124 +215,176 @@
     });
   }
 
-  function showEmpty(text) {
-    scalpHead.hidden = secHappened.hidden = secLevels.hidden = secSetups.hidden = secNotes.hidden = true;
-    rawFallback.hidden = true;
-    emptyState.hidden = false;
-    emptyState.textContent = text;
-  }
-
-  function render(data) {
+  function renderTicket(data) {
     const r = data.report;
-    updatedAt = r.updated ? new Date(r.updated) : (data.updated ? new Date(data.updated) : null);
-    if (updatedAt && isNaN(updatedAt)) updatedAt = null;
-
-    emptyState.hidden = true;
-    scalpHead.hidden = false;
-    const bias = r.bias || 'NEUTRAL';
-    biasPill.className = 'bias-pill ' + ({ BULLISH: 'buy', BEARISH: 'sell' }[bias] || 'none');
+    biasPill.className = 'bias-pill ' + ({ BULLISH: 'buy', BEARISH: 'sell' }[r.bias] || 'none');
     biasPill.textContent = r.bias || 'NO READ';
     scalpPrice.textContent = fmt(r.price);
     biasNote.textContent = r.bias_note || '';
     biasNote.hidden = !r.bias_note;
-    renderUpdated();
 
-    if (!data.usable) {
-      secHappened.hidden = secLevels.hidden = secSetups.hidden = secNotes.hidden = true;
-      rawFallback.hidden = false;
-      rawFallback.textContent = r.raw || '(empty event)';
-      return;
-    }
-    rawFallback.hidden = true;
+    const updated = updatedOf(data);
+    updatedText.textContent = updated ? 'Updated ' + ageText(updated) : '';
+    staleChip.hidden = !updated || (Date.now() - updated.getTime()) / 60000 <= STALE_MINUTES;
 
-    secHappened.hidden = !r.happened.length;
-    fillList(happenedList, r.happened);
-    secLevels.hidden = !r.levels.length;
-    renderLadder(r.levels, r.price);
-    secSetups.hidden = !r.setups.length;
-    renderSetups(r.setups);
-    secNotes.hidden = !r.notes.length;
-    fillList(notesList, r.notes);
+    const usable = data.usable;
+    rawFallback.hidden = usable;
+    if (!usable) rawFallback.textContent = r.raw || '(empty event)';
+
+    secHappened.hidden = !usable || !r.happened.length;
+    fillList(happenedList, usable ? r.happened : []);
+    secLevels.hidden = !usable || !r.levels.length;
+    renderLadder(usable ? r.levels : [], r.price);
+    secSetups.hidden = !usable || !r.setups.length;
+    renderSetups(usable ? r.setups : []);
+    secNotes.hidden = !usable || !r.notes.length;
+    fillList(notesList, usable ? r.notes : []);
+  }
+
+  function renderTimeout() {
+    biasPill.className = 'bias-pill none';
+    biasPill.textContent = 'TIMED OUT';
+    scalpPrice.textContent = '';
+    biasNote.hidden = true;
+    updatedText.textContent = '';
+    staleChip.hidden = true;
+    secHappened.hidden = secLevels.hidden = secSetups.hidden = secNotes.hidden = true;
+    rawFallback.hidden = false;
+    rawFallback.textContent = 'Timed out waiting for the calendar event. Check the session directly.';
+  }
+
+  function setSession(url) {
+    sessionLink.hidden = !url;
+    if (url) sessionLink.href = url;
+  }
+
+  function showLastRead() {
+    const d = lastData && updatedOf(lastData);
+    lastReadBtn.hidden = !d;
+    if (d) lastReadText.textContent = 'Last read · ' + ageText(d);
+  }
+
+  function setPending(isPending) {
+    startBtn.disabled = isPending;
+    gaugeWrap.classList.toggle('pending', isPending);
+    btnIcon.style.display = isPending ? 'none' : '';
+    btnLabel.textContent = isPending ? '' : 'Start';
+    btnSub.textContent = isPending ? '' : 'Run scalp';
+    if (isPending) lastReadBtn.hidden = true;
   }
 
   function setStatus(text, isError) {
-    if (!text) { statusRow.style.display = 'none'; return; }
     statusRow.style.display = 'flex';
     statusRow.classList.toggle('error', !!isError);
     statusText.textContent = text;
   }
 
-  function setRefreshing(on) {
-    refreshBtn.disabled = on;
-    refreshBtn.classList.toggle('pending', on);
-    refreshLabel.textContent = on ? 'Running analysis…' : 'Refresh now';
+  function goToResult() {
+    screenIdle.classList.add('leaving');
+    screenResult.classList.add('entered');
+    // Same as Daily Bias: after the slide-in, drop back into normal flow so
+    // the page grows to fit the whole ticket.
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(function () {
+      screenResult.style.position = 'relative';
+    }, 480);
   }
 
-  function schedule(ms) {
-    clearTimeout(pollTimer);
-    pollTimer = setTimeout(load, ms);
+  function reset() {
+    clearTimeout(settleTimer);
+    screenResult.style.position = '';
+    screenIdle.classList.remove('leaving');
+    screenResult.classList.remove('entered');
+    statusRow.style.display = 'none';
+    setPending(false);
+    showLastRead();
   }
 
-  async function load() {
-    let data;
-    try {
-      const res = await fetch('/api/scalp/latest');
-      data = await res.json();
-    } catch (e) {
-      setStatus('Couldn’t reach the server — ' + e.message, true);
-      schedule(POLL_MS);
-      return;
-    }
-
-    if (data.status === 'ok') render(data);
-    else if (data.status === 'empty') showEmpty('No scalp read yet. The routine posts one every 15 minutes during London + NY (07:00–20:00 UTC, Mon–Fri) — or tap Refresh now.');
-    else if (data.status === 'error') setStatus('Calendar check failed — ' + (data.detail || 'unknown error'), true);
-
-    const run = data.refresh || {};
-    if (run.session_url) {
-      sessionLink.href = run.session_url;
-      sessionLink.hidden = false;
-    }
-    if (run.pending) {
-      setRefreshing(true);
-      setStatus('Routine running… (' + run.elapsed_seconds + 's)', false);
-      schedule(PENDING_POLL_MS);
-      return;
-    }
-    setRefreshing(false);
-    if (run.timed_out) setStatus('Refresh timed out — check the routine session.', true);
-    else if (data.status !== 'error') setStatus('');
-    schedule(POLL_MS);
-  }
-
-  async function refreshNow() {
-    setRefreshing(true);
+  async function startScalp() {
+    setPending(true);
     setStatus('Firing routine…', false);
+
     let res;
     try {
       res = await fetch('/api/scalp/refresh', { method: 'POST' });
     } catch (e) {
-      setRefreshing(false);
       setStatus('Failed to start — ' + e.message, true);
+      setPending(false);
       return;
     }
+
     if (!res.ok) {
       let detail = res.statusText || 'unknown error';
       try { detail = (await res.json()).detail || detail; } catch (e) {}
-      setRefreshing(false);
       setStatus('Failed to start — ' + detail, true);
+      setPending(false);
       return;
     }
-    schedule(PENDING_POLL_MS);
+
+    setStatus('Routine running…', false);
+    pollStatus();
   }
 
-  refreshBtn.addEventListener('click', refreshNow);
-  renderAutoChip();
-  setInterval(function () { renderAutoChip(); renderUpdated(); }, 30000);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) load();
+  async function pollStatus() {
+    let data;
+    try {
+      data = await (await fetch('/api/scalp/latest')).json();
+    } catch (e) {
+      setPending(false);
+      setStatus('Lost connection while checking status — ' + e.message, true);
+      return;
+    }
+
+    const run = data.refresh || {};
+    if (data.status === 'error') {
+      setPending(false);
+      setStatus('Status check failed — ' + (data.detail || 'unknown error'), true);
+      return;
+    }
+    if (run.pending) {
+      setStatus('Routine running… (' + run.elapsed_seconds + 's)', false);
+      pollTimer = setTimeout(pollStatus, 5000);
+      return;
+    }
+
+    setPending(false);
+    setSession(run.session_url);
+    if (run.timed_out || data.status !== 'ok') {
+      renderTimeout();
+    } else {
+      lastData = data;
+      renderTicket(data);
+    }
+    goToResult();
+  }
+
+  // On load: offer the last read, and pick up a run that's still going
+  // (e.g. the page was reloaded mid-run).
+  async function init() {
+    let data;
+    try {
+      data = await (await fetch('/api/scalp/latest')).json();
+    } catch (e) {
+      return;
+    }
+    if (data.status === 'ok') lastData = data;
+    if (data.refresh && data.refresh.pending) {
+      setPending(true);
+      setStatus('Routine running…', false);
+      pollStatus();
+      return;
+    }
+    showLastRead();
+  }
+
+  startBtn.addEventListener('click', startScalp);
+  againBtn.addEventListener('click', reset);
+  lastReadBtn.addEventListener('click', function () {
+    renderTicket(lastData);
+    setSession(lastData.refresh && lastData.refresh.session_url);
+    goToResult();
   });
-  load();
+  init();
 })();
 </script>
 </body>
