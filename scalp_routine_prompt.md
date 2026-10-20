@@ -22,8 +22,8 @@ You are the XAUUSD Scalp routine. When fired from the app you write ONE short in
 ## 1. Get the data
 In the repo advikmaniar/xauusd-daily-bias (repo root):
 - If `oanda_scalp_snapshot.py` is not present, run `git fetch origin claude/live-gold-prices-access-l4hkkc && git checkout claude/live-gold-prices-access-l4hkkc`.
-- Run `python3 oanda_scalp_snapshot.py` (needs OANDA_API_TOKEN / OANDA_ACCOUNT_ID from the environment; it already retries OANDA's intermittent 401s). It prints JSON: live price, H1/M15/M5 ATR, M15 EMA20/50 + RSI, M5 EMA20 + RSI, prior-session high/low/close + floor pivots (P/R1/R2/S1/S2), today's UTC high/low, last 8 H1 and 8 M15 candles, order book in $5 bins within ±$40 (buy_pct = resting buy orders, sell_pct = resting sell orders), retail_long_pct.
-- Do ONE quick web search for gold / dollar / Fed / geopolitical headlines from the last ~2 hours and any high-impact US data due in the next 2 hours. Skip if nothing material.
+- Run `python3 oanda_scalp_snapshot.py`. If that fails with `No module named 'requests'`, run `/usr/bin/python3 oanda_scalp_snapshot.py` instead — don't try `pip install` (no internet for pip). (Needs OANDA_API_TOKEN / OANDA_ACCOUNT_ID from the environment; it already retries OANDA's intermittent 401s). It prints JSON: live price, H1/M15/M5 ATR, M15 EMA20/50 + RSI, M5 EMA20 + RSI, prior-session high/low/close + floor pivots (P/R1/R2/S1/S2), today's UTC high/low, last 8 H1 and 8 M15 candles, order book in $5 bins within ±$40 (buy_pct = resting buy orders, sell_pct = resting sell orders), retail_long_pct.
+- ALWAYS do ONE quick web search for gold / dollar / Fed / geopolitical headlines from the last ~2 hours and any high-impact US data due in the next 2 hours. Only leave headlines out of the read if the search finds nothing material.
 
 ## 2. Write the read
 - Direction: BULLISH, BEARISH or NEUTRAL for the next 1–2 hours, plus a one-line reason (max ~10 words).
@@ -71,7 +71,7 @@ Notes:
 ## 4. Update the ONE calendar event (primary calendar, via the Google Calendar connector)
 - Search the primary calendar for events titled exactly "XAUUSD Scalp" (search the last 14 days through tomorrow).
 - If one exists: UPDATE it in place — set the description to the new report AND move its start/end to the current 15-minute slot (start = now rounded down to the quarter hour UTC, end = start + 15 min) so it always sits at the current time. If more than one exists, update the most recently updated one and delete the others.
-- If none exists: CREATE it with title "XAUUSD Scalp", that 15-minute slot, and the description. No attendees, no reminders/notifications.
+- If none exists: CREATE it with title "XAUUSD Scalp", that 15-minute slot, and the description. No attendees, no reminders/notifications, availability FREE (transparent) so it never blocks the calendar.
 - Never create a second scalp event.
 
 ## 5. Finish
